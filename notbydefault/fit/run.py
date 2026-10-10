@@ -18,6 +18,7 @@ from notbydefault.fit.report import ReportContext, render, write_decision_record
 from notbydefault.fit.stats import Verdict, decide, parse_number, project_monthly, summarize
 from notbydefault.fit.tracing import Tracer, make_tracer
 from notbydefault.graph import Graph, find_affected_code
+from notbydefault.openrouter import LLMError
 
 DEFAULT_CALLS_PER_USER = 30
 EXPECTED_OUT_TOKENS = 350     # cost estimate only; the spend guard uses worst cases
@@ -190,8 +191,9 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                     samples = samples_mod.generate(
                         caller.analyst(cfg["judge"], max(2000, opts.n_samples * 250)), project,
                         decision_id, site, n=opts.n_samples, generator=cfg["judge"])
-            except BudgetExceeded as e:
-                out(f"Stopped before testing: {e}")
+            except (BudgetExceeded, LLMError, ValueError) as e:
+                out(f"Stopped before testing (spent ${guard.spent:.4f}): {e}")
+                tracer.flush()
                 return 3
             inputs = assemble_inputs(project, decision_id, samples)
             rows, failures = run_setups(caller, site, inputs, cfg["candidates"], verifiers,

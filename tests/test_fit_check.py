@@ -150,6 +150,18 @@ def test_calls_per_user_asked_once_and_stored(project):
     assert asked == []
 
 
+def test_api_error_during_setup_is_reported_not_raised(project):
+    from notbydefault.openrouter import LLMError
+    p, did = project
+
+    class Broke(FakeClient):
+        def chat(self, *a, **k):
+            raise LLMError("HTTP 402: Insufficient credits")
+
+    code, report = run(p, did, Broke())
+    assert code == 3 and "Insufficient credits" in report
+
+
 def test_service_decision_is_milestone_3(tmp_path):
     with Graph.for_project(tmp_path) as g:
         did = g.add_node("decision", "MongoDB", {"kind": "service", "category": "database"})
