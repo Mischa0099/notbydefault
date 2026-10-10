@@ -1,4 +1,4 @@
-"""python -m notbydefault init|show|install|check"""
+"""python -m notbydefault init|show|install|check|label"""
 from __future__ import annotations
 
 import argparse
@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from notbydefault import PACKAGE_DIR
-from notbydefault.graph import Graph, db_path, find_affected_code
+from notbydefault.graph import Graph, db_path
 
 # (answer key, node type, question, label template)
 QUESTIONS = [
@@ -103,23 +103,15 @@ def cmd_check(args) -> int:
     if not db_path(project).exists():
         print(f"No graph at {db_path(project)}. Run this from the project dir or pass --project.")
         return 1
-    with Graph.for_project(project) as g:
-        node = g.get_node(args.decision_id)
-        if not node or node["type"] != "decision":
-            print(f"No decision #{args.decision_id} in {db_path(project)}")
-            return 1
-        print(f"Decision #{node['id']}: {_describe(node)}")
-        deps = g.get_dependencies(node["id"])
-        print("\nDepends on:" if deps else "\nDepends on: nothing yet (run `init` to record "
-                                            "goals and constraints)")
-        for n in deps:
-            print(f"  #{n['id']} {n['type']}: {n['label']}")
-        files = find_affected_code(node)
-        print("\nAffects:" if files else "\nAffects: no files recorded")
-        for f in files:
-            print(f"  {f}")
-        print("\n(Fit testing against these constraints comes in a later milestone.)")
-    return 0
+    from notbydefault.fit.run import CheckOptions, check_model_decision
+    opts = CheckOptions(max_cost=args.max_cost, yes=args.yes,
+                        calls_per_user=args.calls_per_user, n_samples=args.samples)
+    return check_model_decision(project, args.decision_id, opts)
+
+
+def cmd_label(args) -> int:
+    from notbydefault.fit.labels import label
+    return label(Path(args.project).resolve(), args.decision_id, n=args.n)
 
 
 # --- install --------------------------------------------------------------------
@@ -198,10 +190,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("project_dir")
     p.set_defaults(func=cmd_install)
 
-    p = sub.add_parser("check", help="show what a decision depends on and affects")
+    p = sub.add_parser("check", help="fit-test a decision against the project's constraints")
     p.add_argument("decision_id", type=int)
     p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--max-cost", type=float, default=1.00,
+                   help="stop before spending more than this many USD (default 1.00)")
+    p.add_argument("--yes", "-y", action="store_true", help="don't ask for confirmation")
+    p.add_argument("--calls-per-user", type=float,
+                   help="calls per user per month (asked once, default 30)")
+    p.add_argument("--samples", type=int, default=20, help="synthetic inputs to generate")
     p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("label", help="hand-label outputs to measure verifier trust")
+    p.add_argument("decision_id", type=int)
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("-n", type=int, default=10, help="outputs to label (default 10)")
+    p.set_defaults(func=cmd_label)
 
     args = parser.parse_args(argv)
     return args.func(args)
