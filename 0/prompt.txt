@@ -1,0 +1,504 @@
+create a .env file in the notbydefault folder with your neatlogs key (NEATLOGS_API_KEY=...) and add .env to .gitignore. You can just ask Claude Code to do that first.
+
+---
+
+done added - 
+
+<pasted_content id="5e2d">
+We're building NotByDefault (neatHack hackathon): it hooks into Claude Code,
+catches moments where a coding agent makes a consequential stack decision
+(database/auth/hosting service, AI model choice), and records each decision in
+a Decision Graph. Python 3.12, on Windows. Small steps; commit after each
+working piece. Keys only from .env (NEATLOGS_API_KEY is there).
+
+IMPORTANT: Before writing hook code, read the current Claude Code hooks
+documentation (settings.json hook config, events like PreToolUse and
+UserPromptSubmit, the JSON each hook receives on stdin, and how a hook can
+allow/deny/ask or add context). Follow the docs exactly; don't guess formats.
+This repo already has Entire's hooks in .claude/settings.json; never modify
+or remove them.
+
+## Layout
+notbydefault/
+  graph.py        # Decision Graph in SQLite
+  detect.py       # decides whether a tool call or prompt is a decision moment
+  hooks/
+    pre_tool.py   # PreToolUse hook entry point
+    user_prompt.py# UserPromptSubmit hook entry point (pivot detection, later)
+  cli.py          # `python -m notbydefault init|show|install|check <project-dir>`
+demo-app/         # a tiny sample project where OUR hooks get installed
+
+## Milestone 1 (only this)
+1. graph.py: SQLite with tables nodes(id, type, label, data_json, created_at,
+   session_id) and edges(src, dst, type). Node types: goal, requirement,
+   constraint, decision, evidence, alternative, code, pivot. Edge types:
+   depends_on, supported_by, rejects, affects, serves. Functions to add
+   nodes/edges, list decisions, get everything a decision depends on, and a
+   stub find_affected_code(decision) that will later query Entire Graph
+   (for now: return the file the tool call touched).
+2. `init <project-dir>`: asks a few skippable questions (goal, expected users,
+   monthly budget, region/compliance needs, team size) and stores them as
+   goal/requirement/constraint nodes in <project-dir>/.notbydefault/graph.db.
+3. detect.py: flag a decision moment when
+   - a shell command installs a package that is a known service SDK or ORM
+     (small editable list: supabase, firebase, prisma, mongodb, etc.), or
+   - a Write/Edit introduces a hardcoded AI model identifier (regex for common
+     model-name patterns) or adds such a dependency to package.json /
+     requirements.txt.
+   Return the decision kind (service | model) and what was chosen.
+4. hooks/pre_tool.py: read the hook JSON from stdin, run detect.py; if it's a
+   decision moment, write a "decision" node (status: unreviewed) linked to the
+   code it touches, then respond so Claude Code asks the user to confirm, with
+   a short reason like: "NotByDefault: this picks <X> as your <kind>. Run
+   `python -m notbydefault check <id>` to test the fit." Otherwise allow
+   silently. Must be fast (< 300 ms) and must never break Claude Code: on any
+   error, log it and allow.
+5. `install <project-dir>`: adds our hook config to
+   <project-dir>/.claude/settings.json (merge, don't overwrite), using
+   absolute Windows paths to the Python executable and hook scripts.
+6. Log each detection to neatlogs (python neatlogs SDK, one span per hook call
+   with kind, chosen value, decision id); flush before the hook exits.
+7. demo-app/: a minimal Python or Node app. Install our hooks there.
+8. `show <project-dir>`: prints the graph (nodes + edges) readably.
+Add tests for graph.py and detect.py. Tell me exactly how to test it by hand
+at the end.
+</pasted_content id="5e2d">
+
+---
+
+cd ~\notbydefault
+   git push
+
+---
+
+“Create a .venv with py -3.12 in the repo, install the package and its dependencies there, update the hook paths in demo-app/.claude/settings.json to use the venv’s python, and make the hook’s message show the correct command instead of python. Add .venv to .gitignore. Rerun the tests.”
+
+---
+
+tests to run - 
+
+<pasted_content id="5e2d">
+  How to test by hand
+
+  1. Set up the demo project:
+  cd C:\Users\misch\notbydefault\demo-app
+  py -3.12 -m notbydefault init .
+     Answer the questions or press Enter to skip.
+  2. Start a new Claude Code session in demo-app. Hooks load when a session starts. Run /hooks and confirm a PreToolUse entry with matcher Bash|PowerShell|Write|Edit|MultiEdit.
+  3. Trigger a service decision. Ask: "Persist notes in MongoDB using pymongo; install it and add it to requirements.txt." You should get a permission prompt saying NotByDefault: this picks MongoDB as your
+     service (database). Run python -m notbydefault check N to test the fit.
+  4. Trigger a model decision. Ask: "Add a /summarize endpoint that calls OpenAI with model gpt-4o." Writing "gpt-4o" into a file should prompt you.
+  5. Check that ordinary work isn't flagged. Ask it to run dir or read a file. NotByDefault should stay silent.
+  6. Inspect the graph from a second terminal in demo-app:
+  py -3.12 -m notbydefault show .
+  py -3.12 -m notbydefault check <id>
+  7. Check neatlogs. demo-app\.notbydefault\hook.log should show an ask … ms line and then telemetry: sent span for decision(s) N. In the dashboard, look for workflow notbydefault, span notbydefault.pre_tool.
+  8. Run the tests: py -3.12 -m pytest from the repo root.
+</pasted_content id="5e2d">
+
+---
+
+<pasted_content id="5e2d">
+Milestone 2: make `check <id>` actually test a MODEL decision (e.g. #10 gpt-4o
+in demo-app). Service decisions just print "service fit: coming in Milestone 3".
+Use OPENROUTER_API_KEY from .env (OpenAI-compatible API). Small commits.
+
+## Steps for a model decision
+1. Find the call site from the decision's "affects" code node. Use an LLM to
+   extract: the task (e.g. "summarize a user's notes"), the system prompt, and
+   how the user message is built.
+2. Test inputs: load .notbydefault/samples/<decision_id>.jsonl if it exists;
+   otherwise generate 20 realistic synthetic inputs for this task with an LLM,
+   save them there (so runs are reproducible), and label them "synthetic" in
+   the report.
+3. Candidates: .notbydefault/candidates.yaml; if missing, create it with the
+   chosen model plus 3 cheaper alternatives from different providers that
+   exist on OpenRouter. Never hardcode prices: fetch them from OpenRouter's
+   models API and record the source URL and the date fetched.
+4. Run every input on every candidate (fixed temperature). Record output,
+   input/output tokens, latency and cost per call.
+5. Quality: an LLM judge (a strong model, ideally not one of the candidates)
+   scores each output 1-5 against a rubric derived from the task, blind to
+   which model wrote it, with order randomized. Report mean score and a
+   bootstrap 95% interval per model.
+6. Monthly cost projection: expected users from the graph x calls per user per
+   month (ask once, default 30, state it as an assumption) x avg cost per
+   call. Compare with the monthly budget constraint.
+7. Verdict: recommend the cheapest model whose quality is not meaningfully
+   worse than the chosen one (its interval overlaps, or mean within 0.3
+   points). Say "not enough evidence" when results are too close to call.
+   Plain-English summary + a table: model, quality (CI), avg latency,
+   cost/call, projected monthly cost, fits budget?
+8. Write to the graph: evidence nodes (test results file, pricing source +
+   date), alternative nodes for rejected models with reasons, and update the
+   decision status to reviewed with the verdict. Also write a short decision
+   record to <project>/decisions/NNNN-<slug>.md.
+9. neatlogs: one trace per check, a span per model call and per judge call,
+   with model, tokens, cost, latency and score as attributes.
+10. Safety: a --max-cost flag (default $1.00) that stops the run if spend
+    would exceed it; show estimated cost before running and ask to confirm.
+Add tests with mocked API calls. At the end, run it for real on decision #10
+in demo-app and show me the report.
+</pasted_content id="5e2d">
+
+---
+
+<pasted_content id="5e2d">
+Verifiers (core of this milestone):
+- From the Decision Graph (what the decision affects, the goal, requirements,
+  constraints) and the code, generate decision-specific verifiers for the
+  task: 3-5 deterministic checks (e.g. length, format, coverage of inputs)
+  plus one LLM rubric check (e.g. no facts absent from the input). Store them
+  in .notbydefault/verifiers/<decision_id>.py so they're reviewable and reusable.
+- Candidates are SETUPS, not just models: model alone, and model + verifier
+  with up to 2 retries (retry feeds the verifier's failure reason back).
+  Report pass rate, quality, latency and cost per call INCLUDING retries.
+- Failure bank: every failing output is saved to
+  .notbydefault/failures/<decision_id>.jsonl with the input, output, model and
+  which verifier failed. Later runs always include these cases first.
+- Verifier trust: sample 10 outputs, let me mark pass/fail by hand
+  (`notbydefault label <decision_id>`), and report how often the verifiers
+  agree with me.
+- The verdict can recommend "cheaper model + verifier" when it matches the
+  chosen model's pass rate at lower total cost.
+</pasted_content id="5e2d">
+
+---
+
+<pasted_content id="5e2d">
+We have no paid credits. Switch the model-fit test to free tiers:
+1. Providers: support multiple OpenAI-compatible providers from config
+   (base_url + key env var): Groq (GROQ_API_KEY) and Google Gemini via its
+   OpenAI-compatible endpoint (GEMINI_API_KEY). Keep OpenRouter as optional.
+   Read each provider's docs for the correct base URL and model ids.
+2. Candidates: only models available on these free tiers. The demo's chosen
+   model is a LARGE model; candidates include small models of the same and
+   other families. Judge: a strong Gemini model.
+3. Rate limits: respect per-minute limits (throttle), back off and retry on
+   429, and stop cleanly with a clear message if a daily limit is hit, saving
+   progress so the run can resume later.
+4. Cache every model response on disk keyed by (model, prompt, settings) so
+   reruns and the v1->v2 evaluation never spend requests twice.
+5. Costs: compute from each provider's published paid prices, stored with
+   source URL and date. Label reports "run on free tier; costs are list-price
+   estimates".
+6. Keep the run small by default: 8 inputs, 3 candidates, max 2 retries.
+7. Update demo-app so its summarize endpoint uses the large model as the
+   default choice, re-detect the decision, and run `check` on it.
+</pasted_content id="5e2d">
+
+---
+
+Sorry, I interrupted by mistake. Please continue exactly where you left off with the free-tier provider changes (Groq + Gemini). First check the current state of the files, then carry on. Don't commit; stage the changes and give me a commit message.
+
+---
+
+<pasted_content id="5e2d">
+Tag every agent step and tool span in neatlogs with a "focus_area"
+attribute (planning, tool_use, state, context, execution, recovery,
+verification, iteration). Make sure the check agent logs its plan as an
+explicit step, logs why it expands the sample or swaps a candidate, and
+logs every recovery (429 backoff, failed call, retry) with the reason.
+</pasted_content id="5e2d">
+
+---
+
+<task-notification>
+<task-id>b1496vz3h</task-id>
+<summary>Monitor event: "fit check #13 progress (cache growth / finish)"</summary>
+<event>cached=4 samples=0 verifiers=0 results=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bfkj0rltj</task-id>
+<summary>Monitor event: "check #13: cache growth, recoveries, finish"</summary>
+<event>cached=4 samples=0 verifiers=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>br36fb3s1</task-id>
+<tool-use-id>toolu_019pKA57Q11zScfsKtVwkmuj</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\br36fb3s1.output</output-file>
+<status>completed</status>
+<summary>Background command "Run real free-tier check on decision 13 in background" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bfkj0rltj</task-id>
+<tool-use-id>toolu_01AXCSuAvfErkHGPJDZuC3GL</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\bfkj0rltj.output</output-file>
+<status>completed</status>
+<summary>Monitor "check #13: cache growth, recoveries, finish" stream ended</summary>
+<event>DONE exit=3
+Run it? [y/N] Stopped before testing (spent $0.0025): sample generation returned only 3 inputs</event>
+</task-notification>
+
+---
+
+<pasted_content id="5e2d">
+I replaced GEMINI_API_KEY in .env with a key from a new AI Studio project
+with no billing, so it should be on the real free tier.
+
+1. Re-probe all Gemini models with the new key. Clear the "unavailable"
+   marks that came from the old key's 402 errors, but keep the
+   gemini-3.8-flash "hangs on real prompts" note unless it now works.
+2. Pick the judge again: the strongest working Gemini model that is not a
+   candidate. If no Gemini model works, use the strongest Groq model that is
+   NOT a candidate (not qwen) and label the report "judge: <model>,
+   single-provider run".
+3. Rerun `check` on decision #13 in demo-app from a clean state, using the
+   cache where valid. If a daily limit stops it, tell me when to resume.
+4. When it finishes, show me the full report (summary + table) and the
+   results file path.
+5. Give me the neatlogs trace links for: this run, and the earlier run where
+   the judge got a 402 and was swapped (that's our recovery evidence).
+6. Tell me exactly how to run `label 13` by hand.
+Do not commit; stage the changes and give me a commit message to use.
+</pasted_content id="5e2d">
+
+---
+
+<task-notification>
+<task-id>bzk6om2i9</task-id>
+<summary>Monitor event: "check #13 progress (cache, samples, verifiers, finish)"</summary>
+<event>cached=7 samples=0 verifiers=0 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>beb33gwo0</task-id>
+<tool-use-id>toolu_016nY9tjLg7uwqQWZDiEMk9j</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\beb33gwo0.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait until samples are generated or the run exits" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bzk6om2i9</task-id>
+<summary>Monitor event: "check #13 progress (cache, samples, verifiers, finish)"</summary>
+<event>cached=9 samples=1 verifiers=0 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bzk6om2i9</task-id>
+<summary>Monitor event: "check #13 progress (cache, samples, verifiers, finish)"</summary>
+<event>cached=23 samples=1 verifiers=2 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bzk6om2i9</task-id>
+<summary>Monitor event: "check #13 progress (cache, samples, verifiers, finish)"</summary>
+<event>cached=23 samples=1 verifiers=2 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bzk6om2i9</task-id>
+<summary>Monitor event: "check #13 progress (cache, samples, verifiers, finish)"</summary>
+<event>cached=56 samples=1 verifiers=2 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bah2u00gd</task-id>
+<tool-use-id>toolu_01GBHEwqrvSvNMB3YZpdzF7t</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\bah2u00gd.output</output-file>
+<status>completed</status>
+<summary>Background command "Run real check on decision 13 in background" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bzk6om2i9</task-id>
+<tool-use-id>toolu_01GKMf9NikHRHxLLfkzyazSJ</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\bzk6om2i9.output</output-file>
+<status>completed</status>
+<summary>Monitor "check #13 progress (cache, samples, verifiers, finish)" stream ended</summary>
+<event>DONE exit=0
+Decision #13 uses openai/gpt-oss-120b (groq:openai/gpt-oss-120b) to summarize a user's collection of saved notes into a brief overview. We ran 8 inputs (8 synthetic) through 3 models, each alone and with a verifier, checked every output with the verifiers and had gemini:gemini-3.8-flash score them blind. Switch to groq:openai/gpt-oss-20b: pass rate 100% [100%-100%] vs 100% [100%-100%] and quality 3.50 [3.12-3.88] vs 3.25 [2.75-3.62] for groq:openai/gpt-oss-120b, at 1.5x lower cost per call. At t...(truncated)</event>
+</task-notification>
+
+---
+
+<pasted_content id="5e2d">
+The engine works, but the demo task is too easy: every model passed 100%,
+verifiers caught nothing, and the judge may favour its own family. Make the
+evidence meaningful:
+
+1. Harder, realistic demo feature: add to demo-app an endpoint that
+   extracts action items from meeting notes as JSON (task, owner, due date,
+   priority), using the large model by default. This has objective answers.
+   Re-detect the decision via the hook.
+2. Objective verifiers for it: valid JSON matching the schema; every owner
+   and date must appear in the input (no invented facts); no action items
+   missing (compare against reference answers); dates normalized correctly.
+3. Test inputs with reference answers: 12 cases including hard ones
+   (relative dates like "next Friday", several owners, an item cancelled
+   later in the notes, notes with no action items, long notes, mixed
+   language). Write the reference answers by hand-quality, store them in
+   .notbydefault/samples/, mark which are hard. Score correctness against
+   references, not only the LLM judge.
+4. Judge bias: use two judges from different families (one Gemini, one
+   strong non-candidate on Groq), report each score and their agreement.
+   Correctness vs references counts more than judge scores.
+5. Verdict: show two recommendations, "cheapest setup that meets the bar"
+   and "best quality within the budget", so quality gains aren't ignored.
+6. Make the cost question real: in demo-app's graph set expected users to
+   20,000 and calls per user per month to 60, labelled as the demo
+   scenario's assumptions.
+7. Run check on the new decision, show me the report, and tell me which
+   cases each setup failed and whether verifier retries rescued any.
+Tag spans with focus_area as before. Do not commit; stage and give me a
+commit message.
+</pasted_content id="5e2d">
+
+---
+
+<pasted_content id="5e2d">
+The connection dropped mid-response. Continue from where you stopped: you were
+about to build the deterministic date resolver for the action-items
+verifier. First check the current state of the files, then carry on with
+the remaining steps (reference answers, verifiers, two judges, both
+recommendations, the run on #21 and the report). Do not commit; stage and
+give me a commit message.
+</pasted_content id="5e2d">
+
+---
+
+<task-notification>
+<task-id>bi6bjb1j5</task-id>
+<summary>Monitor event: "check #21 progress (cache growth, finish)"</summary>
+<event>cached=66 callsite=0 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bi6bjb1j5</task-id>
+<summary>Monitor event: "check #21 progress (cache growth, finish)"</summary>
+<event>cached=104 callsite=1 failures=0</event>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bpx7h78wo</task-id>
+<tool-use-id>toolu_016XZ5b9ds4Toe7KcQVeMsM9</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\bpx7h78wo.output</output-file>
+<status>completed</status>
+<summary>Background command "Run real check on decision 21 in background" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bi6bjb1j5</task-id>
+<tool-use-id>toolu_016tczdqMa1ofpiw7BZzr7Tc</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\bi6bjb1j5.output</output-file>
+<status>completed</status>
+<summary>Monitor "check #21 progress (cache growth, finish)" stream ended</summary>
+<event>DONE exit=4
+Run it? [y/N] Stopped: daily free-tier limit reached for gemini:gemini-3.8-flash: [{ "error": { "code": 429, "message": "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n* Quota exceeded fo (resets at midnight Pacific time).
+Journal: .notbydefault/journal/21-20261010T180513Z-daily_limit.json</event>
+</task-notification>
+
+---
+
+<pasted_content id="5e2d">
+Update the demo scenario's monthly budget to $375 (labelled as a demo
+assumption like users and calls), then resume the run on #21 to completion
+with both judges, and show me the final report and #21's decision record.
+In the report's caveats, also disclose that case c10's reference was
+reworded during development after all models omitted the item.
+Do not commit; stage and give me a commit message.
+</pasted_content id="5e2d">
+
+---
+
+git diff --cached --name-only
+
+---
+
+git commit -F msg.txt
+
+---
+
+<pasted_content id="5e2d">
+Milestone 3: Pivot Check and stale decisions, both built on the Decision
+Graph. Use Groq models for all LLM calls in this milestone (Gemini's daily
+quota is used up until 12:30 IST); test with mocked calls where possible.
+Read the current Claude Code hooks docs before writing the UserPromptSubmit
+hook; follow them exactly. Never modify or remove Entire's hooks.
+
+1. Pivot Check (UserPromptSubmit hook, hooks/user_prompt.py):
+   - Cheap pre-filter first (phrases like "switch to", "instead", "actually",
+     "what if we", "let's use", "drop", "replace"), then a fast Groq call to
+     confirm it's a real change of direction, not an ordinary request. Most
+     messages must pass through with no LLM call at all.
+   - If it is a pivot: query the graph and add context for Claude Code
+     listing (a) goals/constraints it conflicts with, (b) decisions it would
+     invalidate, with their recorded reasons and evidence, (c) code those
+     decisions affect. Instruct Claude Code to show this to the user in
+     <= 6 lines and ask them to choose: switch anyway / adjust / keep plan.
+   - Record the outcome as a "pivot" node linked to the affected decisions
+     (status: proposed until the user's choice is known).
+   - Never block the user. Keep it fast (pre-filter < 50 ms); on any error,
+     log it and add nothing. Install it into demo-app via `install`.
+
+2. Stale decisions: `notbydefault require <project> "<new requirement>"`:
+   - Add a requirement node, then have a Groq model judge each existing
+     decision against it, with a one-line reason. Mark affected decisions
+     "stale" with that reason and an edge to the new requirement.
+   - Print what became stale, why, and the code each one affects.
+   - `check` on a stale decision re-runs the evaluation including the new
+     requirement (e.g. "EU data residency required" should make provider
+     and model decisions stale and filter candidates accordingly).
+
+3. Demo script: add a reproducible scenario to the demo reset script:
+   a) user pivot: "actually, let's switch to gpt-4o for action items, it's
+      the best" -> Pivot Check flags the $375 budget and decision #21's
+      evidence;
+   b) `require "We signed an EU customer: EU data residency required"` ->
+      shows which decisions go stale.
+   Tell me the exact commands and prompts to reproduce both.
+
+4. Tests for the pre-filter, pivot confirmation, graph queries and stale
+   marking, with mocked LLM calls. Report how many messages the pre-filter
+   lets through on a sample of 20 ordinary prompts (should be ~0 LLM calls).
+
+Tag every agent step and tool span in neatlogs with a "focus_area"
+attribute (planning, tool_use, state, context, execution, recovery,
+verification, iteration), and log reasons for plan changes and recoveries.
+Do not commit; write the commit message to msg.txt and show it to me.
+</pasted_content id="5e2d">
+
+---
+
+Make sure M3's tests and demo scenario don't write to demo-app/.notbydefault while the scheduled check 21 job is running; use a temporary copy of the graph for tests.
+
+---
+
+<task-notification>
+<task-id>bddsrl98e</task-id>
+<tool-use-id>toolu_01TaQdZKYDETpY3KAp7drcW5</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\3e97a407-519b-45c5-ae63-176f7af81d01\tasks\bddsrl98e.output</output-file>
+<status>killed</status>
+<summary>Background command "Wait for the Gemini quota reset, then resume check 21" was stopped because the system is running low on memory</summary>
+<note>This is not a failure of the command. Claude Code stopped it because the system was critically low on memory while the session was idle, which says nothing about the command or its own memory use, so there is nothing in it to debug. Do not start it again on your own, even if the work seems to need it: memory may still be short. Report what was stopped and why, and start it again only when asked. The user can turn this behavior off by starting Claude Code with CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP=1 in its environment; setting it from a shell command has no effect.</note>
+</task-notification>

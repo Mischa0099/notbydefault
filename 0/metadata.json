@@ -1,0 +1,355 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4KMWR0G2BHVEMNG9MMHHP6G",
+  "session_id": "3e97a407-519b-45c5-ae63-176f7af81d01",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-10T19:33:39.4963552Z",
+  "branch": "main",
+  "checkpoints_count": 23,
+  "save_step_count": 20,
+  "files_touched": [
+    ".gitignore",
+    "demo-app/.claude/settings.json",
+    "demo-app/actions.py",
+    "demo-app/app.py",
+    "demo-app/decisions/0001-ai-model-openai-gpt-oss-120b.md",
+    "demo-app/demo.py",
+    "demo-app/eval/action_item_cases.jsonl",
+    "demo-app/eval/action_item_verifiers.py",
+    "demo-app/eval/build_action_item_cases.py",
+    "notbydefault/cli.py",
+    "notbydefault/detect.py",
+    "notbydefault/fit/callsite.py",
+    "notbydefault/fit/candidates.py",
+    "notbydefault/fit/checks.py",
+    "notbydefault/fit/dates.py",
+    "notbydefault/fit/evaluate.py",
+    "notbydefault/fit/providers.py",
+    "notbydefault/fit/providers.yaml",
+    "notbydefault/fit/reference.py",
+    "notbydefault/fit/report.py",
+    "notbydefault/fit/run.py",
+    "notbydefault/fit/samples.py",
+    "notbydefault/fit/stats.py",
+    "notbydefault/fit/tracing.py",
+    "notbydefault/fit/verifiers.py",
+    "notbydefault/hooks/user_prompt.py",
+    "notbydefault/llm.py",
+    "notbydefault/openrouter.py",
+    "notbydefault/pivot.py",
+    "notbydefault/stale.py",
+    "notbydefault/telemetry.py",
+    "pyproject.toml",
+    "tests/conftest.py",
+    "tests/test_detect.py",
+    "tests/test_fit_check.py",
+    "tests/test_fit_reference.py",
+    "tests/test_fit_tracing.py",
+    "tests/test_fit_units.py",
+    "tests/test_hook_and_cli.py",
+    "tests/test_pivot_stale.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "a2827241ab82",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 712,
+    "cache_creation_tokens": 714073,
+    "cache_read_tokens": 146074692,
+    "output_tokens": 536236,
+    "api_call_count": 350
+  },
+  "session_metrics": {
+    "turn_count": 23
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-10T19:33:39.2693295Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 5504,
+    "human_modified": 9780,
+    "human_removed": 0,
+    "total_committed": 5504,
+    "total_lines_changed": 15284,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 40,
+      "agent_lines_removed": 23
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 51,
+      "user_lines_removed": 7,
+      "agent_lines_added": 66,
+      "agent_lines_removed": 29,
+      "user_added_per_file": {
+        "demo-app/README.md": 6,
+        "demo-app/app.py": 43,
+        "demo-app/requirements.txt": 2
+      },
+      "user_removed_per_file": {
+        "demo-app/README.md": 1,
+        "demo-app/app.py": 5,
+        "demo-app/requirements.txt": 1
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 3717,
+      "user_lines_removed": 1303,
+      "agent_lines_added": 347,
+      "agent_lines_removed": 1590,
+      "user_added_per_file": {
+        ".check13.log": 14,
+        "demo-app/app.py": 45,
+        "notbydefault/cli.py": 214,
+        "notbydefault/detect.py": 364,
+        "notbydefault/fit/callsite.py": 1,
+        "notbydefault/fit/candidates.py": 180,
+        "notbydefault/fit/evaluate.py": 154,
+        "notbydefault/fit/providers.py": 242,
+        "notbydefault/fit/providers.yaml": 49,
+        "notbydefault/fit/report.py": 175,
+        "notbydefault/fit/run.py": 514,
+        "notbydefault/fit/samples.py": 39,
+        "notbydefault/fit/stats.py": 90,
+        "notbydefault/fit/tracing.py": 109,
+        "notbydefault/fit/verifiers.py": 204,
+        "notbydefault/llm.py": 237,
+        "notbydefault/openrouter.py": 17,
+        "pyproject.toml": 3,
+        "tests/conftest.py": 139,
+        "tests/test_detect.py": 164,
+        "tests/test_fit_check.py": 285,
+        "tests/test_fit_tracing.py": 67,
+        "tests/test_fit_units.py": 411
+      },
+      "user_removed_per_file": {
+        "demo-app/app.py": 5,
+        "notbydefault/cli.py": 207,
+        "notbydefault/detect.py": 362,
+        "notbydefault/fit/callsite.py": 1,
+        "notbydefault/fit/candidates.py": 160,
+        "notbydefault/fit/evaluate.py": 59,
+        "notbydefault/fit/report.py": 139,
+        "notbydefault/fit/samples.py": 1,
+        "notbydefault/fit/stats.py": 67,
+        "notbydefault/fit/tracing.py": 14,
+        "notbydefault/openrouter.py": 126,
+        "tests/test_detect.py": 162
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 82,
+      "user_lines_removed": 12,
+      "agent_lines_added": 3553,
+      "agent_lines_removed": 2379,
+      "user_added_per_file": {
+        "notbydefault/fit/candidates.py": 6,
+        "notbydefault/fit/providers.py": 1,
+        "notbydefault/fit/providers.yaml": 7,
+        "notbydefault/fit/report.py": 7,
+        "notbydefault/fit/run.py": 8,
+        "notbydefault/fit/tracing.py": 5,
+        "tests/test_fit_check.py": 21,
+        "tests/test_fit_tracing.py": 5,
+        "tests/test_fit_units.py": 22
+      },
+      "user_removed_per_file": {
+        "notbydefault/fit/candidates.py": 1,
+        "notbydefault/fit/providers.yaml": 6,
+        "notbydefault/fit/report.py": 1,
+        "notbydefault/fit/run.py": 1,
+        "notbydefault/fit/tracing.py": 1,
+        "tests/test_fit_tracing.py": 1,
+        "tests/test_fit_units.py": 1
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3373,
+      "agent_lines_removed": 2129
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3373,
+      "agent_lines_removed": 2129
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3373,
+      "agent_lines_removed": 2129
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3373,
+      "agent_lines_removed": 2129
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 486,
+      "user_lines_removed": 434,
+      "agent_lines_added": 3373,
+      "agent_lines_removed": 2129,
+      "user_added_per_file": {
+        "demo-app/decisions/0001-ai-model-openai-gpt-oss-120b.md": 42,
+        "notbydefault/fit/stats.py": 4,
+        "tests/test_fit_units.py": 440
+      },
+      "user_removed_per_file": {
+        "notbydefault/fit/stats.py": 2,
+        "tests/test_fit_units.py": 432
+      }
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3607,
+      "agent_lines_removed": 2311
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 2380,
+      "user_lines_removed": 886,
+      "agent_lines_added": 3664,
+      "agent_lines_removed": 2517,
+      "user_added_per_file": {
+        "demo-app/actions.py": 1,
+        "demo-app/eval/action_item_cases.jsonl": 12,
+        "demo-app/eval/action_item_verifiers.py": 41,
+        "demo-app/eval/build_action_item_cases.py": 181,
+        "notbydefault/fit/callsite.py": 153,
+        "notbydefault/fit/candidates.py": 34,
+        "notbydefault/fit/checks.py": 375,
+        "notbydefault/fit/dates.py": 117,
+        "notbydefault/fit/evaluate.py": 26,
+        "notbydefault/fit/reference.py": 92,
+        "notbydefault/fit/report.py": 121,
+        "notbydefault/fit/run.py": 593,
+        "notbydefault/fit/stats.py": 303,
+        "notbydefault/fit/verifiers.py": 19,
+        "tests/conftest.py": 4,
+        "tests/test_fit_check.py": 22,
+        "tests/test_fit_reference.py": 283,
+        "tests/test_fit_units.py": 3
+      },
+      "user_removed_per_file": {
+        "demo-app/actions.py": 2,
+        "notbydefault/fit/callsite.py": 117,
+        "notbydefault/fit/candidates.py": 2,
+        "notbydefault/fit/evaluate.py": 5,
+        "notbydefault/fit/report.py": 23,
+        "notbydefault/fit/run.py": 534,
+        "notbydefault/fit/stats.py": 173,
+        "notbydefault/fit/verifiers.py": 4,
+        "tests/conftest.py": 2,
+        "tests/test_fit_check.py": 22,
+        "tests/test_fit_units.py": 2
+      }
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 727,
+      "user_lines_removed": 2,
+      "agent_lines_added": 4973,
+      "agent_lines_removed": 3050,
+      "user_added_per_file": {
+        "demo-app/actions.py": 1,
+        "demo-app/eval/action_item_cases.jsonl": 12,
+        "demo-app/eval/action_item_verifiers.py": 41,
+        "demo-app/eval/build_action_item_cases.py": 181,
+        "notbydefault/fit/dates.py": 117,
+        "notbydefault/fit/reference.py": 92,
+        "tests/test_fit_reference.py": 283
+      },
+      "user_removed_per_file": {
+        "demo-app/actions.py": 2
+      }
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 727,
+      "user_lines_removed": 2,
+      "agent_lines_added": 4973,
+      "agent_lines_removed": 3050,
+      "user_added_per_file": {
+        "demo-app/actions.py": 1,
+        "demo-app/eval/action_item_cases.jsonl": 12,
+        "demo-app/eval/action_item_verifiers.py": 41,
+        "demo-app/eval/build_action_item_cases.py": 181,
+        "notbydefault/fit/dates.py": 117,
+        "notbydefault/fit/reference.py": 92,
+        "tests/test_fit_reference.py": 283
+      },
+      "user_removed_per_file": {
+        "demo-app/actions.py": 2
+      }
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5751,
+      "agent_lines_removed": 3050
+    },
+    {
+      "checkpoint_number": 17,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5797,
+      "agent_lines_removed": 3050
+    },
+    {
+      "checkpoint_number": 18,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5797,
+      "agent_lines_removed": 3050
+    },
+    {
+      "checkpoint_number": 19,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 5847,
+      "agent_lines_removed": 3050
+    },
+    {
+      "checkpoint_number": 20,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 7600,
+      "agent_lines_removed": 3266
+    }
+  ]
+}
