@@ -1,1 +1,2 @@
-# no dependencies yet
+openai==3.28.0
+pymongo==4.18.3
