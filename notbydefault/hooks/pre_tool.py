@@ -150,7 +150,7 @@ def handle(event: dict, project_dir: Path) -> dict | None:
 
 def main(argv: list[str]) -> int:
     start = time.perf_counter()
-    project_dir = None
+    project_dir = _project_dir(argv, {}) if "--project" in argv else None
     try:
         event = json.loads(sys.stdin.buffer.read().decode("utf-8", errors="replace") or "{}")
         project_dir = _project_dir(argv, event)

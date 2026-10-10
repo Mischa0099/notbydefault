@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Program Files\\Python312\\python.exe",
+            "args": [
+              "C:\\Users\\misch\\notbydefault\\notbydefault\\hooks\\pre_tool.py",
+              "--project",
+              "C:\\Users\\misch\\notbydefault\\demo-app"
+            ],
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
