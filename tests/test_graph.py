@@ -95,3 +95,5 @@ def test_find_affected_code_returns_touched_file(graph):
     assert find_affected_code(graph.get_node(d)) == ["src/db.ts"]
     e = graph.add_node("decision", "y", {})
     assert find_affected_code(graph.get_node(e)) == []
+    f = graph.add_node("decision", "z", {"file": "a.py", "files": ["a.py", "b.py"]})
+    assert find_affected_code(graph.get_node(f)) == ["a.py", "b.py"]

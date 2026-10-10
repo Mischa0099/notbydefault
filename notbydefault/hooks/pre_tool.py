@@ -63,11 +63,16 @@ def record(graph, detection, event: dict, project_dir: Path) -> int:
                 and d["label"].lower() == detection.chosen.lower()]
     if existing:  # e.g. Claude retried after the user said no: don't pile up duplicates
         decision_id = existing[0]["id"]
-        seen = existing[0]["data"].get("times_seen", 1) + 1
-        graph.update_data(decision_id, times_seen=seen)
+        old = existing[0]["data"]
+        files = old.get("files") or ([old["file"]] if old.get("file") else [])
+        if file and file not in files:
+            files.append(file)
+        graph.update_data(decision_id, times_seen=old.get("times_seen", 1) + 1, files=files,
+                          file=old.get("file") or file)
     else:
         data = detection.to_dict()
-        data.update(status="unreviewed", file=file, tool_name=event.get("tool_name"),
+        data.update(status="unreviewed", file=file, files=[file] if file else [],
+                    tool_name=event.get("tool_name"),
                     tool_use_id=event.get("tool_use_id"), times_seen=1)
         if event.get("tool_name") in ("Bash", "PowerShell"):
             data["command"] = (event.get("tool_input") or {}).get("command")
@@ -108,6 +113,19 @@ def _spawn_telemetry(payload: dict, project_dir: Path) -> None:
         subprocess.Popen(cmd, start_new_session=True, **kwargs)
 
 
+def _quote(arg: str) -> str:
+    return f'"{arg}"' if " " in arg else arg
+
+
+def check_command(decision_id: int, project_dir: Path) -> str:
+    """The exact command to inspect a decision, using the interpreter running this hook."""
+    exe = _quote(sys.executable)
+    if exe.startswith('"'):  # PowerShell needs the call operator for a quoted exe path
+        exe = f"& {exe}"
+    return (f"{exe} -m notbydefault check {decision_id} "
+            f"--project {_quote(str(project_dir.resolve()))}")
+
+
 def handle(event: dict, project_dir: Path) -> dict | None:
     from notbydefault.detect import detect
 
@@ -122,7 +140,7 @@ def handle(event: dict, project_dir: Path) -> dict | None:
 
     parts = [f"this picks {d.chosen} as your {d.kind}"
              + (f" ({d.category})" if d.kind == "service" else "")
-             + f". Run `python -m notbydefault check {i}` to test the fit."
+             + f". Run `{check_command(i, project_dir)}` to test the fit."
              for d, i in zip(detections, ids)]
     reason = "NotByDefault: " + " Also: ".join(parts)
 

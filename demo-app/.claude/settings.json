@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:\\Program Files\\Python312\\python.exe",
+            "command": "C:\\Users\\misch\\notbydefault\\.venv\\Scripts\\python.exe",
             "args": [
               "C:\\Users\\misch\\notbydefault\\notbydefault\\hooks\\pre_tool.py",
               "--project",

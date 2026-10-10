@@ -162,7 +162,9 @@ def find_affected_code(decision: dict) -> list[str]:
     """Files a decision affects.
 
     Stub: later this will query Entire Graph for every caller/consumer of the
-    chosen service or model. For now it returns the file the tool call touched.
+    chosen service or model. For now it returns the file(s) the tool calls touched.
     """
-    file = decision.get("data", {}).get("file")
-    return [file] if file else []
+    data = decision.get("data", {})
+    if data.get("files"):
+        return list(data["files"])
+    return [data["file"]] if data.get("file") else []

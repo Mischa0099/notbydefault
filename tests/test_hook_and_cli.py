@@ -36,7 +36,10 @@ def test_hook_asks_and_records_decision(tmp_path):
     assert out["permissionDecision"] == "ask"
     assert out["permissionDecisionReason"].startswith(
         "NotByDefault: this picks MongoDB as your service (database).")
-    assert "python -m notbydefault check" in out["permissionDecisionReason"]
+    with Graph.for_project(tmp_path) as g:
+        decision_id = g.list_decisions()[0]["id"]
+    assert (f"Run `{sys.executable} -m notbydefault check {decision_id} "
+            f"--project {tmp_path.resolve()}` to test the fit.") in out["permissionDecisionReason"]
 
     with Graph.for_project(tmp_path) as g:
         [d] = g.list_decisions()
@@ -58,6 +61,17 @@ def test_hook_links_code_and_dedupes_retries(tmp_path):
         [code] = g.nodes("code")
         assert code["label"] == "ai.py"
         assert {"src": d["id"], "dst": code["id"], "type": "affects"} in g.edges()
+
+
+def test_reused_decision_picks_up_files_from_later_calls(tmp_path):
+    from notbydefault.graph import find_affected_code
+    run_hook(tmp_path, event("PowerShell", {"command": "pip install pymongo"}, tmp_path))
+    req = tmp_path / "requirements.txt"
+    run_hook(tmp_path, event("Edit", {"file_path": str(req), "old_string": "",
+                                      "new_string": "pymongo>=4.6\n"}, tmp_path))
+    with Graph.for_project(tmp_path) as g:
+        [d] = g.list_decisions()
+        assert find_affected_code(d) == ["requirements.txt"]
 
 
 def test_hook_is_silent_for_non_decisions(tmp_path):
