@@ -10,19 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from notbydefault import REPO_ROOT
-
-
-def load_env(path: Path = REPO_ROOT / ".env") -> None:
-    """Minimal .env reader: KEY=VALUE lines; existing environment wins."""
-    if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip("'\""))
+from notbydefault.env import load_env
 
 
 def _log(payload: dict, message: str) -> None:
