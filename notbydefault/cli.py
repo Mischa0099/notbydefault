@@ -105,7 +105,8 @@ def cmd_check(args) -> int:
         return 1
     from notbydefault.fit.run import CheckOptions, check_model_decision
     opts = CheckOptions(max_cost=args.max_cost, yes=args.yes,
-                        calls_per_user=args.calls_per_user, n_samples=args.samples)
+                        calls_per_user=args.calls_per_user, n_samples=args.samples,
+                        expand_rounds=args.expand_rounds)
     return check_model_decision(project, args.decision_id, opts)
 
 
@@ -114,33 +115,77 @@ def cmd_label(args) -> int:
     return label(Path(args.project).resolve(), args.decision_id, n=args.n)
 
 
+def cmd_require(args) -> int:
+    from notbydefault.stale import require
+    return require(Path(args.project_dir), args.requirement)
+
+
+def cmd_pivot(args) -> int:
+    """List pivots, or record the user's choice for one by hand."""
+    from notbydefault.pivot import resolve
+    project = Path(args.project).resolve()
+    if not db_path(project).exists():
+        print(f"No graph at {db_path(project)}.")
+        return 1
+    with Graph.for_project(project) as g:
+        if args.pivot_id is None:
+            for p in g.nodes("pivot"):
+                d = p["data"]
+                print(f"#{p['id']:<4} [{d.get('status')}] {p['label']}  decisions: "
+                      f"{', '.join(f'#{x}' for x in d.get('decisions', [])) or '-'}")
+            return 0
+        p = g.get_node(args.pivot_id)
+        if not p or p["type"] != "pivot":
+            print(f"No pivot #{args.pivot_id}")
+            return 1
+        if not args.choice:
+            print(f"#{p['id']} [{p['data'].get('status')}] {p['label']}")
+            return 0
+        stale = resolve(g, p, args.choice, "(recorded with `notbydefault pivot`)")
+    print(f"Pivot #{args.pivot_id}: {args.choice}"
+          + (f"; decisions now stale: {', '.join(f'#{d}' for d in stale)}" if stale else ""))
+    return 0
+
+
 # --- install --------------------------------------------------------------------
 
 HOOK_MARKER = "notbydefault"
 PRE_TOOL_MATCHER = "Bash|PowerShell|Write|Edit|MultiEdit"
 
 
-def hook_entry(project: Path) -> dict:
+# event -> (hook script, matcher or None, timeout s). UserPromptSubmit has no matcher support,
+# and its timeout covers one fast Groq call when the pre-filter matches.
+OUR_HOOKS = {
+    "PreToolUse": ("pre_tool.py", PRE_TOOL_MATCHER, 10),
+    "UserPromptSubmit": ("user_prompt.py", None, 20),
+}
+
+
+def hook_entry(project: Path, script: str = "pre_tool.py", timeout: int = 10) -> dict:
     return {
         "type": "command",
         # exec form: no shell, so spaces in "C:\Program Files\..." need no quoting
         "command": str(Path(sys.executable).resolve()),
-        "args": [str(PACKAGE_DIR / "hooks" / "pre_tool.py"), "--project", str(project)],
-        "timeout": 10,
+        "args": [str(PACKAGE_DIR / "hooks" / script), "--project", str(project)],
+        "timeout": timeout,
     }
 
 
-def _is_ours(handler: dict) -> bool:
-    return any(HOOK_MARKER in str(a) and "pre_tool.py" in str(a) for a in handler.get("args", []))
+def _is_ours(handler: dict, script: str = "pre_tool.py") -> bool:
+    return any(HOOK_MARKER in str(a) and script in str(a) for a in handler.get("args", []))
 
 
 def merge_settings(settings: dict, project: Path) -> dict:
-    """Add (or refresh) our PreToolUse hook without touching any other hook."""
-    groups = settings.setdefault("hooks", {}).setdefault("PreToolUse", [])
-    for group in groups:
-        group["hooks"] = [h for h in group.get("hooks", []) if not _is_ours(h)]
-    groups[:] = [g for g in groups if g.get("hooks")]
-    groups.append({"matcher": PRE_TOOL_MATCHER, "hooks": [hook_entry(project)]})
+    """Add (or refresh) our hooks without touching any other hook."""
+    for event, (script, matcher, timeout) in OUR_HOOKS.items():
+        groups = settings.setdefault("hooks", {}).setdefault(event, [])
+        for group in groups:
+            group["hooks"] = [h for h in group.get("hooks", []) if not _is_ours(h, script)]
+        groups[:] = [g for g in groups if g.get("hooks")]
+        group = {"hooks": [hook_entry(project, script, timeout)]}
+        if matcher:
+            group = {"matcher": matcher, **group}
+        groups.append(group)
     return settings
 
 
@@ -162,7 +207,7 @@ def cmd_install(args) -> int:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(settings, indent=2) + "\n", encoding="utf-8")
     Graph.for_project(project).close()
-    print(f"Installed NotByDefault PreToolUse hook in {path}")
+    print(f"Installed NotByDefault PreToolUse and UserPromptSubmit hooks in {path}")
     print(f"  python: {sys.executable}")
     return 0
 
@@ -198,8 +243,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", "-y", action="store_true", help="don't ask for confirmation")
     p.add_argument("--calls-per-user", type=float,
                    help="calls per user per month (asked once, default 30)")
-    p.add_argument("--samples", type=int, default=20, help="synthetic inputs to generate")
+    p.add_argument("--samples", type=int, default=8, help="synthetic inputs to generate")
+    p.add_argument("--expand-rounds", type=int, default=1,
+                   help="times to add 4 inputs when the verdict is too close to call (default 1)")
     p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("require", help="add a requirement and mark decisions it makes stale")
+    p.add_argument("project_dir")
+    p.add_argument("requirement", help='e.g. "EU data residency required"')
+    p.set_defaults(func=cmd_require)
+
+    p = sub.add_parser("pivot", help="list pivots, or record the user's choice for one")
+    p.add_argument("pivot_id", type=int, nargs="?")
+    p.add_argument("--choice", choices=["accepted", "adjusting", "kept"])
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.set_defaults(func=cmd_pivot)
 
     p = sub.add_parser("label", help="hand-label outputs to measure verifier trust")
     p.add_argument("decision_id", type=int)

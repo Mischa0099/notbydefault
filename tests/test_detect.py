@@ -88,6 +88,8 @@ def edit(path, old, new):
     "claude-sonnet-4-5", "claude-3-5-sonnet-20241022", "claude-opus-5-5",
     "gemini-2.5-pro", "llama-3.1-70b", "meta-llama/Llama-3.1-8B-Instruct",
     "mistral-large-latest", "deepseek-chat", "grok-4", "text-embedding-3-small",
+    "openai/gpt-oss-120b", "gpt-oss-20b", "qwen/qwen3.8-27b", "gemma-4-31b-it",
+    "gemini-3.5-flash-lite",
 ])
 def test_model_literal_in_new_file(tmp_path, literal):
     d = detect(write(tmp_path / "ai.py", f'client.chat(model="{literal}")\n'))

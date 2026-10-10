@@ -9,7 +9,7 @@ from pathlib import Path
 
 from notbydefault.fit.callsite import CallSite
 from notbydefault.fit.checks import Check, RubricCheck, describe_library, validate_args
-from notbydefault.openrouter import parse_json
+from notbydefault.llm import parse_json
 
 GENERATE_SYSTEM = ("You design automatic output checks for an LLM feature. "
                    "Answer with one JSON object only.")
@@ -161,32 +161,46 @@ class VerifyResult:
     cost: float = 0.0
     latency_s: float = 0.0
     error: str | None = None
+    retry_reasons: list[str] = field(default_factory=list)   # failures production can see
 
     @property
     def reason(self) -> str:
         return "; ".join(self.reasons)
 
+    @property
+    def retry_reason(self) -> str:
+        return "; ".join(self.retry_reasons)
+
 
 def verify(caller, verifier_model: str, verifiers: Verifiers, input_text: str, output: str,
-           attrs: dict | None = None) -> VerifyResult:
-    """Deterministic checks first; the LLM rubric only runs if they all pass."""
+           attrs: dict | None = None, reference: dict | None = None) -> VerifyResult:
+    """Deterministic checks first; the LLM rubric only runs if they all pass.
+
+    Reference checks (evaluation-only) are skipped without a reference; their failures count
+    against the output but are never offered as retry hints, since production has no
+    reference answers.
+    """
     result = VerifyResult(passed=True)
     for check in verifiers.checks:
-        ok, why = check.run(input_text, output)
+        if check.needs_reference and reference is None:
+            continue
+        ok, why = check.run(input_text, output, reference)
         if not ok:
             result.passed = False
             result.failed.append(check.name)
             result.reasons.append(f"{check.name}: {why}")
-    if not result.passed or verifiers.rubric is None:
+            if check.retryable:
+                result.retry_reasons.append(f"{check.name}: {why}")
+    if result.retry_reasons or verifiers.rubric is None:
         return result
     from notbydefault.fit.evaluate import BudgetExceeded  # local: avoid import cycle
-    from notbydefault.openrouter import LLMError
+    from notbydefault.llm import LLMError
     try:
         reply = caller.chat(verifier_model, [
             {"role": "system", "content": RUBRIC_SYSTEM},
             {"role": "user", "content": RUBRIC_PROMPT.format(
                 criterion=verifiers.rubric.criterion, input=input_text, output=output)},
-        ], span="notbydefault.verifier_call", role="verifier", max_tokens=200,
+        ], span="notbydefault.verifier_call", role="verifier", max_tokens=1024,
             attrs=attrs or {})
         result.cost, result.latency_s = reply.cost, reply.latency_s
         verdict = parse_json(reply.text)
@@ -194,6 +208,7 @@ def verify(caller, verifier_model: str, verifiers: Verifiers, input_text: str, o
             result.passed = False
             result.failed.append("llm_rubric")
             result.reasons.append(f"llm_rubric: {verdict.get('reason', 'failed')}")
+            result.retry_reasons.append(result.reasons[-1])
     except BudgetExceeded:
         raise
     except (LLMError, AttributeError) as e:

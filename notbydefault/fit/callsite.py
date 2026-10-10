@@ -1,13 +1,14 @@
 """Step 1: find the code that calls the chosen model and extract what it is for."""
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from notbydefault.graph import find_affected_code
-from notbydefault.openrouter import parse_json
+from notbydefault.llm import parse_json
 
 FULL_FILE_LINES = 250   # send the whole file when it's at most this long
 WINDOW = 80             # otherwise this many lines either side of the literal
@@ -23,6 +24,7 @@ class CallSite:
     user_message_format: str = ""
     input_description: str = ""
     rubric: list[str] = field(default_factory=list)
+    system_prompt_source: str = "llm"   # "source" when read verbatim from the code
 
     @property
     def snippet_sha(self) -> str:
@@ -101,6 +103,9 @@ def extract(chat, project: Path, decision: dict, site: CallSite) -> CallSite:
     site.user_message_format = str(data.get("user_message_format", ""))
     site.input_description = str(data.get("input_description", ""))
     site.rubric = [str(r) for r in data.get("rubric") or []][:5]
+    exact = source_system_prompt(project / site.file, site.line)
+    if exact is not None:   # the LLM may paraphrase; the code is the truth
+        site.system_prompt, site.system_prompt_source = exact, "source"
     if not site.task or not site.rubric:
         raise ValueError(f"call-site extraction returned no task/rubric: {reply.text[:300]}")
     path = cache_path(project, decision["id"])
@@ -115,3 +120,34 @@ def build_messages(site: CallSite, user_message: str) -> list[dict]:
         messages.append({"role": "system", "content": site.system_prompt})
     messages.append({"role": "user", "content": user_message})
     return messages
+
+
+def source_system_prompt(path: Path, near_line: int = 0) -> str | None:
+    """The exact system prompt a Python call site sends, read from the source with ast.
+
+    Finds dict literals {"role": "system", "content": X} where X is a string literal or a
+    module-level string constant; returns the one nearest `near_line`. None if not found.
+    """
+    if path.suffix != ".py" or not path.is_file():
+        return None
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError):
+        return None
+    constants = {t.id: node.value.value for node in tree.body if isinstance(node, ast.Assign)
+                 for t in node.targets if isinstance(t, ast.Name)
+                 and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)}
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        fields = {k.value: v for k, v in zip(node.keys, node.values)
+                  if isinstance(k, ast.Constant) and isinstance(k.value, str)}
+        role, content = fields.get("role"), fields.get("content")
+        if not (isinstance(role, ast.Constant) and role.value == "system") or content is None:
+            continue
+        if isinstance(content, ast.Constant) and isinstance(content.value, str):
+            found.append((abs(node.lineno - near_line), content.value))
+        elif isinstance(content, ast.Name) and content.id in constants:
+            found.append((abs(node.lineno - near_line), constants[content.id]))
+    return min(found)[1] if found else None

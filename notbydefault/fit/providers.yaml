@@ -1,0 +1,64 @@
+# OpenAI-compatible providers for model fit tests (defaults shipped with NotByDefault).
+# Override or extend per project in <project>/.notbydefault/providers.yaml (same shape;
+# entries there replace these field by field).
+#
+# Per model:  family / size (small|medium|large) / strength (judge ranking, higher = stronger)
+#             in / out: PAID list price, USD per 1M tokens, from prices_source on prices_fetched
+#             rpm / tpm / rpd: limits we throttle to on the free tier
+# Models used for single-purpose roles (Milestone 3: Groq only while Gemini's quota is spent).
+roles:
+  pivot: groq:openai/gpt-oss-20b         # fast yes/no + mapping onto the graph
+  stale_judge: groq:openai/gpt-oss-120b  # judges every decision against a new requirement
+
+providers:
+  groq:
+    base_url: https://api.groq.com/openai/v1          # https://console.groq.com/docs/openai
+    key_env: GROQ_API_KEY
+    tier: free
+    # Regions where data is guaranteed to stay. Groq: "All customer data is retained in Google
+    # Cloud Platform (GCP) buckets located in the United States"; no EU option (SCCs only).
+    data_residency: [US]
+    data_residency_source: https://console.groq.com/docs/your-data (read 2026-10-11)
+    prices_source: https://console.groq.com/docs/models
+    prices_fetched: "2026-10-10"
+    limits_source: >-
+      https://console.groq.com/docs/rate-limits and x-ratelimit-* headers observed 2026-10-10
+      (1000 requests/day, 8000 tokens/minute per model)
+    models:
+      openai/gpt-oss-120b: {family: gpt-oss, size: large, strength: 2, in: 0.15, out: 0.60, rpm: 30, tpm: 8000, rpd: 1000}
+      openai/gpt-oss-20b:  {family: gpt-oss, size: small, strength: 1, in: 0.075, out: 0.30, rpm: 30, tpm: 8000, rpd: 1000}
+      qwen/qwen3.8-27b:    {family: qwen, size: medium, strength: 1, in: 0.80, out: 4.00, rpm: 30, tpm: 8000, rpd: 1000}
+
+  gemini:
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai   # https://ai.google.dev/gemini-api/docs/openai
+    key_env: GEMINI_API_KEY
+    tier: free
+    # Gemini API terms: logs "may be stored transiently or cached in any country in which Google
+    # or its agents maintain facilities"; no residency guarantee.
+    data_residency: []
+    data_residency_source: https://ai.google.dev/gemini-api/terms (read 2026-10-11)
+    prices_source: https://ai.google.dev/gemini-api/docs/pricing
+    prices_fetched: "2026-10-10"
+    limits_source: >-
+      free-tier per-minute limits are not published in the docs (see
+      https://aistudio.google.com/rate-limit); these rpm values are conservative assumptions.
+      Daily quotas reset at midnight Pacific time.
+    timeout: 240          # seconds per request: the strongest Flash models take 30-50 s
+    models:
+      # Probed on 2026-10-10 with a no-billing (free-tier) AI Studio key:
+      #   working: gemini-3.8-flash (~30 s per real prompt), gemini-3.7-flash (~47 s),
+      #            gemini-3.6-flash, gemini-3.5-flash, gemini-3-flash-preview,
+      #            gemini-3.5-flash-lite, gemini-3.1-flash-lite
+      #   gemini-2.5-pro / 2.5-flash / 2.5-flash-lite: 404 "no longer available to new users"
+      #   gemini-3.1-pro-preview: 429 free-tier limit 0 (no free tier)
+      gemini-3.8-flash:      {family: gemini, size: large, strength: 3, in: 0.75, out: 3.75, rpm: 5}   # price valid through 2026-12-31
+      gemini-3.5-flash-lite: {family: gemini, size: small, strength: 2, in: 0.30, out: 2.50, rpm: 10}
+      gemini-3.1-flash-lite: {family: gemini, size: small, strength: 1, in: 0.25, out: 1.50, rpm: 10}
+
+  openrouter:
+    enabled: false        # optional: needs paid credits. Set true to allow openrouter:<id> models.
+    base_url: https://openrouter.ai/api/v1
+    key_env: OPENROUTER_API_KEY
+    tier: paid
+    data_residency: []                       # depends on the routed provider; not guaranteed
+    prices: live          # fetched from https://openrouter.ai/api/v1/models on each run

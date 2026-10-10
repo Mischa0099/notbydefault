@@ -56,11 +56,53 @@ def send(payload: dict) -> bool:
     return not failures
 
 
+def replay(payload: dict) -> bool:
+    """Re-emit a hook's journal (steps, calls, events) as one neatlogs trace.
+
+    Hooks must stay fast, so they journal what they did and this detached process exports it:
+    every step and call becomes a span tagged with its focus_area, and every decision or
+    recovery becomes an event with its reason.
+    """
+    import contextlib
+
+    load_env()
+    if not os.environ.get("NEATLOGS_API_KEY"):
+        _log(payload, "NEATLOGS_API_KEY not set; skipped")
+        return False
+    from notbydefault.fit.tracing import NeatlogsTracer
+
+    tracer = NeatlogsTracer(payload.get("session_id"))
+    with tracer.root(payload.get("name", "notbydefault.hook"),
+                     {"notbydefault.info": payload.get("info") or {}}):
+        with contextlib.ExitStack() as stack:
+            for e in payload.get("journal") or []:
+                extras = {k: v for k, v in e.items()
+                          if k not in ("t", "kind", "name", "focus_area", "reason", "attrs",
+                                       "span_kind")}
+                if e["kind"] == "step":
+                    stack.close()
+                    stack.enter_context(tracer.step(e["name"], e["focus_area"], e.get("reason", ""),
+                                                    extras))
+                elif e["kind"] == "call":
+                    tracer.llm(e["name"], lambda: None, before=e.get("attrs") or {},
+                               after=lambda _r: {}, kind=e.get("span_kind", "TOOL"),
+                               focus_area=e["focus_area"])
+                else:
+                    tracer.event(e["name"], e["focus_area"], e.get("reason", ""), **extras)
+    trace_id = tracer.trace_id
+    tracer.flush()
+    _log(payload, f"sent {payload.get('name')} trace {trace_id}")
+    return True
+
+
 def main(argv: list[str]) -> int:
     payload: dict = {}
     try:
         payload = json.loads(argv[1])
-        send(payload)
+        if payload.get("kind") == "trace":
+            replay(payload)
+        else:
+            send(payload)
     except Exception as e:
         _log(payload, f"error: {e!r}")
     return 0

@@ -1,68 +1,108 @@
-"""Shared fakes: a deterministic stand-in for the OpenRouter API (no network, no spend)."""
+"""Shared fakes: a deterministic stand-in for provider HTTP APIs (no network, no spend).
+
+FakeTransport replaces OpenAICompatClient inside the real ProviderSet, so routing, caching,
+throttling and daily-limit handling are exercised exactly as in production.
+"""
 import json
 import re
 
 import pytest
 
-from notbydefault.openrouter import ChatResult, pricing_from_models
+from notbydefault.fit.providers import ProviderSet
+from notbydefault.llm import DailyLimitReached, ModelUnavailable
 
 
-def model(mid, prompt_per_m, completion_per_m, created, **extra):
-    return {"id": mid, "created": created,
-            "pricing": {"prompt": str(prompt_per_m / 1e6), "completion": str(completion_per_m / 1e6)},
-            "architecture": {"input_modalities": ["text"], "output_modalities": ["text"]},
-            "supported_parameters": ["temperature", "max_tokens"], **extra}
+def _m(family, size, strength, inp, out, **extra):
+    return {"family": family, "size": size, "strength": strength, "in": inp, "out": out, **extra}
 
 
-MODELS = [
-    model("openai/gpt-4o", 2.5, 10, 100),
-    model("openai/gpt-4o-mini", 0.15, 0.6, 101),            # same provider: never an alternative
-    model("anthropic/claude-haiku-5.5", 0.1, 0.5, 300),
-    model("anthropic/claude-haiku-4.5", 0.08, 0.4, 200),     # older than haiku-5.5
-    model("anthropic/claude-haiku-5.5:batch", 0.05, 0.25, 301),
-    model("anthropic/claude-opus-5.5", 4, 20, 302),          # judge
-    model("anthropic/claude-sonnet-4.5", 3, 15, 150),
-    model("google/gemini-3.8-flash", 0.75, 3.75, 400),
-    model("google/gemini-guard-1", 0.01, 0.01, 401),         # specialty: excluded
-    model("meta-llama/llama-4-scout", 0.1, 0.3, 500),
-    model("x-ai/grok-4.7", 2, 6, 600),                       # not cheap enough
-]
+CATALOG = {"roles": {"pivot": "groq:openai/gpt-oss-20b", "stale_judge": "groq:openai/gpt-oss-120b"},
+           "providers": {
+    "groq": {"base_url": "https://groq.test/v1", "key_env": "FAKE_GROQ_KEY", "tier": "free",
+             "prices_source": "https://groq.test/models", "prices_fetched": "2026-10-10",
+             "models": {
+                 "openai/gpt-oss-120b": _m("gpt-oss", "large", 2, 2.5, 10.0),
+                 "openai/gpt-oss-20b": _m("gpt-oss", "small", 1, 0.075, 0.30),
+                 "qwen/qwen3.8-27b": _m("qwen", "medium", 1, 0.20, 0.80),   # second judge
+                 "llama-3.1-8b-instant": _m("llama", "small", 0, 0.05, 0.08),  # swap target
+             }},
+    "gemini": {"base_url": "https://gemini.test/openai", "key_env": "FAKE_GEMINI_KEY",
+               "tier": "free", "prices_source": "https://gemini.test/pricing",
+               "prices_fetched": "2026-10-10",
+               "models": {
+                   "gemini-3.8-flash": _m("gemini", "large", 3, 0.75, 3.75),
+                   "gemini-3.5-flash-lite": _m("gemini", "small", 1, 0.10, 0.40),
+               }},
+    "paidco": {"base_url": "https://paid.test", "key_env": "FAKE_PAID_KEY", "tier": "paid",
+               "prices_source": "https://paid.test/pricing", "prices_fetched": "2026-10-10",
+               "models": {"tiny-1": _m("tiny", "small", 9, 0.01, 0.01)}},   # never auto-picked
+}}
+
+CHOSEN = "groq:openai/gpt-oss-120b"
+SMALL_SAME = "groq:openai/gpt-oss-20b"
+SMALL_OTHER = "gemini:gemini-3.5-flash-lite"
+JUDGE = "gemini:gemini-3.8-flash"
+SWAP_IN = "groq:llama-3.1-8b-instant"
+JUDGE2 = "groq:qwen/qwen3.8-27b"
 
 GOOD_ITEMS_RX = re.compile(r"^\s*-\s+(.+)$", re.M)
 
 
 def concise(user_message: str) -> str:
-    items = GOOD_ITEMS_RX.findall(user_message)
-    return "You need to " + "; ".join(items) + "."
+    return "You need to " + "; ".join(GOOD_ITEMS_RX.findall(user_message)) + "."
 
 
-class FakeClient:
-    """Routes each request by its system prompt, like the real pipeline's call types."""
+class FakeTransport:
+    """Answers like each call type in the pipeline, keyed by system prompt and model."""
 
-    def __init__(self, models=MODELS, n_samples=20):
-        self._pricing = pricing_from_models(models, fetched_at="2026-10-10T00:00:00+00:00")
-        self.calls = []          # (model, kind)
+    def __init__(self, n_samples=8, daily_limit_after=None, unavailable=()):
+        self.calls = []                       # (model, kind)
         self.n_samples = n_samples
+        self.daily_limit_after = daily_limit_after
+        self.unavailable = set(unavailable)   # native model ids answering "limit: 0"
 
-    def pricing(self):
-        return self._pricing
-
-    def chat(self, model, messages, temperature=0.0, max_tokens=1024, json_mode=False):
+    def respond(self, model, messages):
         system = messages[0]["content"] if messages[0]["role"] == "system" else ""
         user = messages[-1]["content"]
         if "analyse application code" in system:
-            kind, text = "extract", json.dumps({
+            return "extract", json.dumps({
                 "task": "Summarize a user's notes in a few sentences.",
                 "system_prompt": "Summarize the user's notes in a few concise sentences.",
                 "user_message_format": "one '- note' line per note",
                 "input_description": "short to-do style notes",
                 "rubric": ["covers every note", "concise", "no invented facts"]})
-        elif "realistic test data" in system:
-            kind = "samples"
-            text = json.dumps({"inputs": [f"- buy milk {i}\n- call Sam about launch {i}\n"
-                                          f"- book dentist appointment" for i in range(self.n_samples)]})
-        elif "design automatic output checks" in system:
-            kind, text = "verifiers", json.dumps({
+        if user == "Reply with the single word: ok":
+            return "probe", "ok"
+        if system.startswith("You review messages a developer sends"):
+            said = user.split("The developer just wrote:", 1)[1].lower()
+            pivot = any(w in said for w in ("gpt-4o", "postgres"))
+            view = json.loads(user.split("The project's Decision Graph:", 1)[1]
+                              .split("Price facts", 1)[0])
+            return "pivot", json.dumps({
+                "is_pivot": pivot, "change": "use gpt-4o for action items" if pivot else "",
+                "decision_ids": [d["id"] for d in view["decisions"] if d["kind"] == "model"] if pivot else [],
+                "conflicts": [{"node_id": n["id"], "why": "gpt-4o costs more than the budget allows"}
+                              for n in view["requirements_and_constraints"]
+                              if "budget" in n["label"].lower()] if pivot else []})
+        if system.startswith("You turn a product requirement"):
+            text = user.split("Requirement:", 1)[1].splitlines()[0].lower()
+            return "extract", json.dumps({"data_residency": "EU" if " eu " in f" {text} " else None,
+                                          "max_monthly_cost_usd": None, "summary": "fake"})
+        if system.startswith("You check whether an existing technical decision"):
+            affected = "category: database" in user and "residency" in user.split("Machine-readable", 1)[0].lower()
+            return "stale_judge", json.dumps({
+                "affected": affected, "reason": "stores customer data outside the EU" if affected
+                else "not related to where data is stored"})
+        if "realistic test data" in system and "already exist" in user:
+            n = int(re.search(r"Write (\d+) NEW", user).group(1))
+            return "extend", json.dumps({"inputs": [
+                f"- water plants {k}\n- email Ana re budget {k}" for k in range(n)]})
+        if "realistic test data" in system:
+            return "samples", json.dumps({"inputs": [
+                f"- buy milk {i}\n- call Sam about launch {i}\n- book dentist appointment"
+                for i in range(self.n_samples)]})
+        if "design automatic output checks" in system:
+            return "verifiers", json.dumps({
                 "checks": [
                     {"check": "not_empty", "args": {}, "why": "must answer"},
                     {"check": "max_words", "args": {"n": 60}, "why": "a quick glance"},
@@ -70,35 +110,45 @@ class FakeClient:
                     {"check": "delete_files", "args": {"path": "/"}, "why": "not in the library"},
                     {"check": "no_preamble", "args": {}, "why": "straight to the point"}],
                 "rubric_check": {"criterion": "No facts absent from the input.", "why": "trust"}})
-        elif "check one output" in system:
-            kind = "rubric"
-            output = user.split("Output to check:", 1)[1]
-            ok = "INVENTED" not in output
-            text = json.dumps({"pass": ok, "reason": "ok" if ok else "mentions a CEO meeting"})
-        elif "impartial evaluator" in system:
-            kind = "judge"
+        if "check one output" in system:
+            ok = "INVENTED" not in user.split("Output to check:", 1)[1]
+            return "rubric", json.dumps({"pass": ok, "reason": "ok" if ok else "invents a meeting"})
+        if "impartial evaluator" in system:
             scores = {}
             for label, out in re.findall(r"Response ([A-Z]):\n<<<\n(.*?)\n>>>", user, re.S):
                 s = 2 if "INVENTED" in out else 3 if "commentary" in out else 5
                 scores[label] = {"score": s, "reason": "fake"}
-            text = json.dumps({"scores": scores})
-        else:
-            kind = "candidate"
-            original = next(m["content"] for m in messages if m["role"] == "user")
-            retry = "failed an automatic check" in user
-            base = concise(original)
-            if model.startswith("google/"):
-                text = base if retry else base + " This is additional commentary." * 20
-            elif model.startswith("meta-llama/"):
-                text = base + " Also an INVENTED meeting with the CEO."
-            else:
-                text = base
+            return "judge", json.dumps({"scores": scores})
+        original = next(m["content"] for m in messages if m["role"] == "user")
+        retry = "failed an automatic check" in user
+        base = concise(original)
+        if model == "gemini-3.5-flash-lite":           # rambles until told to fix it
+            return "candidate", base if retry else base + " This is additional commentary." * 20
+        if model == "openai/gpt-oss-20b":              # always invents a fact
+            return "candidate", base + " Also an INVENTED meeting with the CEO."
+        return "candidate", base
+
+    def complete(self, model, messages, temperature=0.0, max_tokens=1024, json_mode=False,
+                 extra_body=None):
+        if model in self.unavailable:
+            raise ModelUnavailable("fake", model, "free tier limit: 0")
+        kind, text = self.respond(model, messages)
+        if self.daily_limit_after is not None and len(self.calls) >= self.daily_limit_after:
+            raise DailyLimitReached("groq", model, "Rate limit reached: requests per day (RPD)",
+                                    "in 3h")
         self.calls.append((model, kind))
         tin = sum(len(m["content"]) for m in messages) // 4
-        tout = len(text) // 4 + 1
-        return ChatResult(model=model, text=text, input_tokens=tin, output_tokens=tout,
-                          latency_s=0.01, cost=self._pricing.price(model).cost(tin, tout),
-                          finish_reason="stop")
+        return ({"choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+                 "usage": {"prompt_tokens": tin, "completion_tokens": len(text) // 4 + 1}}, 0.01)
+
+
+def make_client(cache_dir=None, transport=None, catalog=CATALOG):
+    t = transport or FakeTransport()
+    client = ProviderSet(catalog, cache_dir=cache_dir, env={},
+                         transports={"groq": t, "gemini": t, "paidco": t},
+                         sleep=lambda s: None)
+    client.transport = t
+    return client
 
 
 @pytest.fixture(autouse=True)
@@ -109,4 +159,31 @@ def no_telemetry(monkeypatch):
 
 @pytest.fixture
 def fake_client():
-    return FakeClient()
+    return make_client()
+
+
+DEMO_STATE = (__import__("pathlib").Path(__file__).resolve().parents[1]
+              / "demo-app" / ".notbydefault").resolve()
+
+
+@pytest.fixture(autouse=True)
+def never_touch_demo_state(monkeypatch):
+    """Tests must never open the live demo graph or cache (a scheduled check may be using them)."""
+    from pathlib import Path
+    from notbydefault import graph as graph_mod
+    from notbydefault.fit import providers as providers_mod
+    real_graph, real_cache = graph_mod.Graph.__init__, providers_mod.ResponseCache.__init__
+
+    def guard(path):
+        p = Path(path).resolve()
+        assert DEMO_STATE not in p.parents and p != DEMO_STATE, f"test touched {p}"
+
+    def graph_init(self, path):
+        guard(path)
+        real_graph(self, path)
+
+    def cache_init(self, folder):
+        guard(folder)
+        real_cache(self, folder)
+    monkeypatch.setattr(graph_mod.Graph, "__init__", graph_init)
+    monkeypatch.setattr(providers_mod.ResponseCache, "__init__", cache_init)

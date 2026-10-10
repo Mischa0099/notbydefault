@@ -133,4 +133,5 @@ def test_install_merges_without_touching_other_hooks(tmp_path):
 
 def test_merge_settings_on_empty():
     s = merge_settings({}, Path("C:/x"))
-    assert list(s["hooks"]) == ["PreToolUse"]
+    assert list(s["hooks"]) == ["PreToolUse", "UserPromptSubmit"]
+    assert "matcher" not in s["hooks"]["UserPromptSubmit"][0]   # no matcher support

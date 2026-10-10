@@ -23,10 +23,14 @@ class Check:
     name: str
     args: dict
     why: str
-    fn: Callable[[str, str], tuple[bool, str]] = field(repr=False)
+    fn: Callable[..., tuple[bool, str]] = field(repr=False)
+    needs_reference: bool = False   # evaluation-only: compares with a reference answer
+    retryable: bool = True          # may its failure reason be fed back as a retry hint?
 
-    def run(self, input_text: str, output: str) -> tuple[bool, str]:
+    def run(self, input_text: str, output: str, reference: dict | None = None) -> tuple[bool, str]:
         try:
+            if self.needs_reference:
+                return self.fn(input_text, output, reference)
             return self.fn(input_text, output)
         except Exception as e:  # a broken check must not crash the run
             return False, f"{self.name} raised {e!r}"
@@ -158,13 +162,177 @@ def json_object(required_keys: list = (), why: str = "") -> Check:
     return Check("json_object", {"required_keys": list(required_keys)}, why, fn)
 
 
+# --- structured (JSON) outputs ------------------------------------------------
+
+def _load_strict(output: str):
+    """Parse exactly like the app does (json.loads, no code fences)."""
+    return json.loads(output.strip())
+
+
+def _validate(value, schema: dict, where: str = "$") -> str | None:
+    """Tiny JSON-schema subset: type (incl. lists like ["string","null"]), enum, pattern,
+    required, properties, additionalProperties: false, items."""
+    types = schema.get("type")
+    if types:
+        allowed = types if isinstance(types, list) else [types]
+        py = {"object": dict, "array": list, "string": str, "null": type(None),
+              "integer": int, "number": (int, float), "boolean": bool}
+        if not any(isinstance(value, py[t]) and not (t in ("integer", "number")
+                   and isinstance(value, bool)) for t in allowed):
+            return f"{where} should be {' or '.join(allowed)}, got {type(value).__name__}"
+    if "enum" in schema and value not in schema["enum"]:
+        return f"{where} must be one of {schema['enum']}, got {value!r}"
+    if isinstance(value, str) and "pattern" in schema and not re.fullmatch(schema["pattern"], value):
+        return f"{where} {value!r} does not match {schema['pattern']}"
+    if isinstance(value, dict):
+        for key in schema.get("required", []):
+            if key not in value:
+                return f"{where} is missing {key!r}"
+        props = schema.get("properties", {})
+        if schema.get("additionalProperties") is False:
+            extra = sorted(set(value) - set(props))
+            if extra:
+                return f"{where} has unexpected keys {extra}"
+        for key, sub in props.items():
+            if key in value:
+                err = _validate(value[key], sub, f"{where}.{key}")
+                if err:
+                    return err
+    if isinstance(value, list) and "items" in schema:
+        for k, item in enumerate(value):
+            err = _validate(item, schema["items"], f"{where}[{k}]")
+            if err:
+                return err
+    return None
+
+
+def _values(data, path: str) -> list:
+    """Values at a path like "action_items[].owner"."""
+    current = [data]
+    for part in path.split("."):
+        many = part.endswith("[]")
+        key = part[:-2] if many else part
+        nxt = []
+        for c in current:
+            v = c.get(key) if isinstance(c, dict) else None
+            if many and isinstance(v, list):
+                nxt.extend(v)
+            elif not many:
+                nxt.append(v)
+        current = nxt
+    return current
+
+
+def json_matches_schema(schema: dict, why: str = "") -> Check:
+    """Output parses as JSON (exactly like the app does) and matches the schema."""
+    def fn(i, o):
+        try:
+            data = _load_strict(o)
+        except (json.JSONDecodeError, AttributeError) as e:
+            return False, f"not valid JSON ({getattr(e, 'msg', e)}); reply with the JSON object only"
+        err = _validate(data, schema)
+        return err is None, err or ""
+    return Check("json_matches_schema", {"schema": schema}, why, fn)
+
+
+def owners_in_input(path: str = "action_items[].owner", why: str = "") -> Check:
+    """Every named owner must appear in the input (no invented people)."""
+    def fn(i, o):
+        try:
+            values = _values(_load_strict(o), path)
+        except (json.JSONDecodeError, AttributeError):
+            return False, "not valid JSON, owners can't be checked"
+        low = i.casefold()
+        invented = []
+        for v in values:
+            for name in str(v).split(",") if v else []:
+                name = name.strip()
+                if name and not re.search(rf"(?<!\w){re.escape(name.casefold())}(?!\w)", low):
+                    invented.append(name)
+        return not invented, f"owner(s) not in the notes: {invented}"
+    return Check("owners_in_input", {"path": path}, why, fn)
+
+
+def dates_in_input(path: str = "action_items[].due_date", why: str = "") -> Check:
+    """Every date must be one the input mentions (resolved like the prompt's date rules)."""
+    from notbydefault.fit.dates import mentioned_dates
+
+    def fn(i, o):
+        try:
+            values = [v for v in _values(_load_strict(o), path) if v]
+        except (json.JSONDecodeError, AttributeError):
+            return False, "not valid JSON, dates can't be checked"
+        from notbydefault.fit.dates import MEETING_RX, meeting_date
+        body = MEETING_RX.sub("", i)   # the header anchors dates; it is not a due date itself
+        allowed = {d.isoformat() for d in mentioned_dates(body, meeting_date(i))}
+        unsupported = [v for v in values if str(v) not in allowed]
+        return not unsupported, (f"due date(s) {unsupported} are not supported by any date in the "
+                                 "notes (resolve relative dates against the meeting date)")
+    return Check("dates_in_input", {"path": path}, why, fn)
+
+
+def dates_normalized(path: str = "action_items[].due_date", why: str = "") -> Check:
+    """Dates must be null or a real calendar date written as YYYY-MM-DD."""
+    from datetime import date as _date
+
+    def fn(i, o):
+        try:
+            values = _values(_load_strict(o), path)
+        except (json.JSONDecodeError, AttributeError):
+            return False, "not valid JSON, dates can't be checked"
+        bad = []
+        for v in values:
+            if v is None:
+                continue
+            try:
+                ok = bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(v))) and bool(_date.fromisoformat(str(v)))
+            except ValueError:
+                ok = False
+            if not ok:
+                bad.append(v)
+        return not bad, f"due date(s) not normalized to YYYY-MM-DD: {bad}"
+    return Check("dates_normalized", {"path": path}, why, fn)
+
+
+def no_missing_items(why: str = "") -> Check:
+    """Evaluation only: every reference action item is present."""
+    from notbydefault.fit.reference import match, parse_output
+
+    def fn(i, o, ref):
+        if not ref:
+            return True, "no reference"
+        out = parse_output(o)
+        if out is None:
+            return False, "not valid JSON"
+        _, missing, _ = match(ref.get("action_items", []), [x for x in out if isinstance(x, dict)])
+        return not missing, f"missing items: {[ref['action_items'][k]['task'] for k in missing]}"
+    return Check("no_missing_items", {}, why, fn, needs_reference=True, retryable=False)
+
+
+def no_extra_items(why: str = "") -> Check:
+    """Evaluation only: nothing beyond the reference (e.g. a task cancelled later)."""
+    from notbydefault.fit.reference import match, parse_output
+
+    def fn(i, o, ref):
+        if not ref:
+            return True, "no reference"
+        out = parse_output(o)
+        if out is None:
+            return False, "not valid JSON"
+        out = [x for x in out if isinstance(x, dict)]
+        _, _, extra = match(ref.get("action_items", []), out)
+        return not extra, f"items not in the reference: {[out[k].get('task') for k in extra]}"
+    return Check("no_extra_items", {}, why, fn, needs_reference=True, retryable=False)
+
+
 def llm_rubric(criterion: str, why: str = "") -> RubricCheck:
     return RubricCheck(criterion, why)
 
 
 FACTORIES = {f.__name__: f for f in [
     not_empty, max_words, min_words, max_chars, max_sentences, min_sentences, forbid_regex,
-    require_regex, no_preamble, no_markdown, covers_inputs, json_object]}
+    require_regex, no_preamble, no_markdown, covers_inputs, json_object, json_matches_schema,
+    owners_in_input, dates_in_input, dates_normalized, no_missing_items, no_extra_items]}
 
 __all__ = list(FACTORIES) + ["llm_rubric", "Check", "RubricCheck"]
 
@@ -202,5 +370,8 @@ def validate_args(name: str, args: dict) -> dict:
                 re.compile(value)
         elif ann in ("list", list):
             value = [str(v) for v in value]
+        elif ann in ("dict", dict):
+            if not isinstance(value, dict):
+                raise ValueError(f"{name}: {pname} must be an object")
         clean[pname] = value
     return clean

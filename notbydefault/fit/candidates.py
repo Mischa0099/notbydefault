@@ -1,7 +1,9 @@
-"""Step 3: candidate models in .notbydefault/candidates.yaml, chosen from OpenRouter's live list.
+"""Step 3: candidate models in .notbydefault/candidates.yaml, chosen from the provider catalog.
 
-Prices are never hardcoded: they come from OpenRouter's models API, and the file records
-the source URL and when they were fetched. Edit the file to change candidates or the judge.
+Only models on a free tier with a configured API key are picked automatically: the chosen
+model plus small models of the same family and of other families. The judge is the strongest
+free model (Gemini first) that isn't a candidate. Prices are the providers' published paid
+list prices (catalog: notbydefault/fit/providers.yaml), recorded with source URL and date.
 """
 from __future__ import annotations
 
@@ -11,25 +13,15 @@ from pathlib import Path
 
 import yaml
 
-from notbydefault.detect import model_provider
-from notbydefault.openrouter import Price, Pricing
+from notbydefault.llm import Price, Pricing
 
-# detect.py provider names -> OpenRouter id prefixes
-OPENROUTER_PREFIX = {"OpenAI": "openai", "Anthropic": "anthropic", "Google": "google",
-                     "Meta": "meta-llama", "Mistral": "mistralai", "DeepSeek": "deepseek",
-                     "xAI": "x-ai", "Alibaba": "qwen", "Cohere": "cohere"}
-# Providers tried, in order, when picking cheaper alternatives.
-ALTERNATIVE_PROVIDERS = ["anthropic", "google", "meta-llama", "mistralai", "deepseek",
-                         "qwen", "x-ai", "openai", "cohere"]
-# Judge preference: newest model matching the first pattern that isn't a candidate.
-JUDGE_PATTERNS = [r"^anthropic/claude-opus-[\d.]+$", r"^anthropic/claude-sonnet-[\d.]+$",
-                  r"^google/gemini-[\d.]+-pro$", r"^openai/gpt-[\d.]+$"]
-SPECIALTY = re.compile(r"guard|embed|tts|audio|image|vision|banana|omni|search|-exp|preview|"
-                       r"ocr|moderation|realtime|coder|devstral|codestral|math", re.I)
-CHEAPER_RATIO = 0.5   # an alternative must cost at most half the chosen model per typical call
+N_ALTERNATIVES = 2            # chosen + 2 = 3 candidates by default
+SIZE_ORDER = {"small": 0, "medium": 1, "large": 2}
+JUDGE_FAMILIES = ["gemini"]   # judge preference: a strong Gemini model
+JUDGE_FALLBACK_SKIP = {"qwen"}  # produced unusable analyst output as a stand-in judge (2026-10-10)
 TYPICAL_IN, TYPICAL_OUT = 1000, 300
 
-DEFAULTS = {"temperature": 0.0, "max_tokens": 1024, "max_retries": 2}
+DEFAULTS = {"temperature": 0.0, "max_tokens": 2048, "max_retries": 2}
 
 
 def config_path(project: Path) -> Path:
@@ -40,26 +32,9 @@ def typical_cost(price: Price) -> float:
     return price.cost(TYPICAL_IN, TYPICAL_OUT)
 
 
-def provider(model_id: str) -> str:
-    return model_id.split("/", 1)[0]
+def usable(m: dict) -> bool:
+    return m.get("tier") == "free" and m.get("available", True)
 
-
-def eligible(model: dict) -> bool:
-    mid = model.get("id", "")
-    arch = model.get("architecture") or {}
-    if ":" in mid or SPECIALTY.search(mid) or model.get("expiration_date"):
-        return False
-    if "text" not in (arch.get("input_modalities") or ["text"]):
-        return False
-    if "text" not in (arch.get("output_modalities") or ["text"]):
-        return False
-    if "temperature" not in (model.get("supported_parameters") or ["temperature"]):
-        return False
-    p = model.get("pricing") or {}
-    try:
-        return float(p.get("prompt", 0)) > 0 and float(p.get("completion", 0)) > 0
-    except (TypeError, ValueError):
-        return False
 
 
 def _norm(s: str) -> str:
@@ -68,98 +43,191 @@ def _norm(s: str) -> str:
 
 
 def resolve_model_id(literal: str, pricing: Pricing) -> str:
-    """Map a literal from code (e.g. "gpt-4o", "claude-sonnet-4-5") to an OpenRouter id."""
+    """Map a literal from code ("openai/gpt-oss-120b", "gemini-3.8-flash") to "<provider>:<id>"."""
     if literal in pricing.prices:
         return literal
-    prefix = OPENROUTER_PREFIX.get(model_provider(literal))
-    ids = [m for m in pricing.prices if ":" not in m]
-    if prefix and f"{prefix}/{literal}" in pricing.prices:
-        return f"{prefix}/{literal}"
-    target = _norm(literal.split("/")[-1])
-    matches = [m for m in ids if _norm(m.split("/", 1)[-1]) == target]
-    if prefix:
-        matches = [m for m in matches if provider(m) == prefix] or matches
+    target = _norm(literal)
+    matches = [m for m in pricing.models
+               if _norm(m["model"]) == target or _norm(m["model"].split("/")[-1]) == target]
     if not matches:
-        raise LookupError(f"{literal!r} not found on OpenRouter ({pricing.source_url}); "
-                          "add it to candidates.yaml by hand")
-    return sorted(matches, key=len)[0]
+        raise LookupError(f"{literal!r} is not in the provider catalog ({pricing.source_url}); "
+                          "add it to .notbydefault/providers.yaml")
+    matches.sort(key=lambda m: (not usable(m), m["provider"]))
+    return matches[0]["id"]
 
 
-def pick_alternatives(chosen: str, pricing: Pricing, n: int = 3) -> list[str]:
-    """Newest eligible model per provider costing <= CHEAPER_RATIO of the chosen one."""
-    limit = typical_cost(pricing.price(chosen)) * CHEAPER_RATIO
-    by_provider: dict[str, dict] = {}
-    for m in pricing.models:
-        mid = m["id"]
-        if (not eligible(m) or provider(mid) == provider(chosen) or mid not in pricing.prices
-                or typical_cost(pricing.prices[mid]) > limit):
+def _entry(pricing: Pricing, model_id: str) -> dict:
+    return next((m for m in pricing.models if m["id"] == model_id),
+                {"id": model_id, "provider": model_id.split(":")[0], "model": model_id})
+
+
+def pick_alternatives(chosen: str, pricing: Pricing, n: int = N_ALTERNATIVES,
+                      exclude: tuple | list | set = (), allowed=None) -> list[str]:
+    """Small free models: first of the same family, then of other families (one per family)."""
+    c = _entry(pricing, chosen)
+    pool = [m for m in pricing.models if usable(m) and m["id"] != chosen and m["id"] not in exclude
+            and (allowed is None or allowed(m["id"]))
+            and SIZE_ORDER.get(m.get("size"), 1) < SIZE_ORDER.get(c.get("size"), 2)]
+    cost = lambda m: typical_cost(pricing.price(m["id"]))
+    same = sorted((m for m in pool if m.get("family") == c.get("family")), key=cost)
+    other = sorted((m for m in pool if m.get("family") != c.get("family")),
+                   key=lambda m: (SIZE_ORDER.get(m.get("size"), 1), m["provider"] == c.get("provider"), cost(m)))
+    picks, families = [], set()
+    for m in same[:1] + other:
+        if m.get("family") in families and m.get("family") != c.get("family"):
             continue
-        best = by_provider.get(provider(mid))
-        if best is None or m.get("created", 0) > best.get("created", 0):
-            by_provider[provider(mid)] = m
-    order = ALTERNATIVE_PROVIDERS + sorted(set(by_provider) - set(ALTERNATIVE_PROVIDERS))
-    return [by_provider[p]["id"] for p in order if p in by_provider][:n]
+        picks.append(m["id"])
+        families.add(m.get("family"))
+        if len(picks) == n:
+            break
+    return picks
 
 
 def pick_judge(exclude: list[str], pricing: Pricing) -> str:
-    models = [m for m in pricing.models if eligible(m) and m["id"] not in exclude]
-    for pattern in JUDGE_PATTERNS:
-        hits = [m for m in models if re.match(pattern, m["id"])]
-        if hits:
-            return max(hits, key=lambda m: m.get("created", 0))["id"]
-    big = [m for m in models if provider(m["id"]) in ("anthropic", "openai", "google")]
-    if not big:
-        raise LookupError("no judge model available on OpenRouter")
-    return max(big, key=lambda m: typical_cost(pricing.prices[m["id"]]))["id"]
+    """Strongest working Gemini that isn't excluded; else the strongest other free model,
+    skipping families too weak to judge (JUDGE_FALLBACK_SKIP)."""
+    pool = [m for m in pricing.models if usable(m) and m["id"] not in exclude]   # judges see test data only
+    preferred = [m for m in pool if m.get("family") in JUDGE_FAMILIES]
+    pool = preferred or [m for m in pool if m.get("family") not in JUDGE_FALLBACK_SKIP]
+    if not pool:
+        raise LookupError("no free model left to act as judge; add one to providers.yaml")
+    return max(pool, key=lambda m: (m.get("strength") or 0,
+                                    typical_cost(pricing.price(m["id"]))))["id"]
+
+
+def pick_second_judge(exclude: list[str], first: str, pricing: Pricing) -> str | None:
+    """A strong judge from a different family than the first, to expose self-preference.
+
+    qwen is allowed here: this judge is cross-checked against the first, not trusted alone.
+    """
+    family = _entry(pricing, first).get("family")
+    pool = [m for m in pricing.models if usable(m) and m["id"] not in exclude
+            and m["id"] != first and m.get("family") != family]
+    if not pool:
+        return None
+    return max(pool, key=lambda m: (m.get("strength") or 0,
+                                    typical_cost(pricing.price(m["id"]))))["id"]
+
+
+def why_picked(model: str, chosen: str, pricing: Pricing) -> str:
+    m, c = _entry(pricing, model), _entry(pricing, chosen)
+    if model == chosen:
+        return "the model the code uses today"
+    family = ("same family" if m.get("family") == c.get("family")
+              else f"other family ({m.get('family')})")
+    ratio = typical_cost(pricing.price(chosen)) / max(typical_cost(pricing.price(model)), 1e-12)
+    return (f"{family}, {m.get('size')} model on {m.get('provider')}'s free tier, "
+            f"{ratio:.1f}x cheaper at list price")
 
 
 def _price_entry(model: str, role: str, pricing: Pricing) -> dict:
     p = pricing.price(model)
-    return {"model": model, "role": role,
+    return {"model": model, "role": role, "why": "",
             "usd_per_mtok_in": round(p.prompt * 1e6, 6),
-            "usd_per_mtok_out": round(p.completion * 1e6, 6)}
+            "usd_per_mtok_out": round(p.completion * 1e6, 6),
+            "price_source": p.source_url, "price_fetched": p.fetched_at}
 
 
-def load_or_create(project: Path, decision: dict, pricing: Pricing) -> tuple[dict, bool]:
-    """Config for this decision: chosen, candidates, judge, verifier_model, temperature, ..."""
+def load_or_create(project: Path, decision: dict, pricing: Pricing, allowed=None,
+                   refresh: str | None = None) -> tuple[dict, bool]:
+    """Config for this decision: chosen, candidates, judge, verifier_model, temperature, ...
+
+    allowed(model_id) -> bool filters which alternatives may be picked (e.g. data residency).
+    refresh: a reason to re-pick candidates (e.g. the decision went stale); the old entry is
+    kept under `history`.
+    """
     path = config_path(project)
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None
     doc = doc or {}
     decisions = doc.setdefault("decisions", {})
     key = str(decision["id"])
     created = False
+    previous = None
+    if refresh and key in decisions:
+        previous = decisions.pop(key)
+        previous["replaced_because"] = refresh
     if key not in decisions:
         chosen = resolve_model_id(decision["label"], pricing)
-        alternatives = pick_alternatives(chosen, pricing)
+        alternatives = pick_alternatives(chosen, pricing, allowed=allowed)
         entries = [_price_entry(chosen, "chosen", pricing)]
         entries += [_price_entry(m, "alternative", pricing) for m in alternatives]
+        for e in entries:
+            e["why"] = why_picked(e["model"], chosen, pricing)
+        judge = pick_judge([e["model"] for e in entries], pricing)
+        second = pick_second_judge([e["model"] for e in entries], judge, pricing)
         decisions[key] = {
             "literal": decision["label"],
             "chosen": chosen,
             "candidates": entries,
-            "judge": pick_judge([e["model"] for e in entries], pricing),
+            "judge": judge,
+            "judge_why": (f"strongest free model (family {_entry(pricing, judge).get('family')}, "
+                          "strength rank) that is not a candidate"),
+            "judges": [judge] + ([second] if second else []),
+            "second_judge_why": (f"strongest non-candidate outside the {_entry(pricing, judge).get('family')} "
+                                 "family, to check the first judge for self-preference")
+            if second else "no second judge available",
             # runs the verifiers' LLM rubric check; cheap because verified setups pay for it
             "verifier_model": min([chosen] + alternatives,
                                   key=lambda m: typical_cost(pricing.price(m))),
-            "pricing_source": pricing.source_url,
-            "pricing_fetched_at": pricing.fetched_at,
+            "verifier_why": "cheapest candidate: verified setups pay for every rubric check",
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+        if previous:
+            decisions[key]["history"] = (previous.pop("history", []) or []) + [previous]
+        if refresh:
+            decisions[key]["refreshed_because"] = refresh
         for k, v in DEFAULTS.items():
             doc.setdefault(k, v)
         path.parent.mkdir(parents=True, exist_ok=True)
         header = ("# NotByDefault fit-test candidates, per decision id. Edit freely.\n"
-                  "# usd_per_mtok_* are a snapshot from pricing_source at pricing_fetched_at;\n"
-                  "# every check re-fetches live prices and uses those for cost.\n")
+                  "# Model ids are <provider>:<model>; providers and their published list\n"
+                  "# prices live in notbydefault/fit/providers.yaml (override per project in\n"
+                  "# .notbydefault/providers.yaml). usd_per_mtok_* here are a snapshot.\n")
         path.write_text(header + yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
         created = True
     entry = decisions[key]
+    judges = entry.get("judges")
+    if not judges:   # entries written before two-judge support
+        second = pick_second_judge([c["model"] for c in entry["candidates"]], entry["judge"],
+                                   pricing)
+        judges = [entry["judge"]] + ([second] if second else [])
+    why = {c["model"]: c.get("why") or "listed in candidates.yaml" for c in entry["candidates"]}
+    why[entry["judge"]] = entry.get("judge_why") or "judge listed in candidates.yaml"
+    for j in judges[1:]:
+        why[j] = entry.get("second_judge_why") or "second judge from another family"
     return {
         "chosen": entry["chosen"],
+        "judges": judges,
         "candidates": [c["model"] for c in entry["candidates"]],
+        "why": why,
         "judge": entry["judge"],
         "verifier_model": entry.get("verifier_model") or entry["chosen"],
         "max_retries": int(doc.get("max_retries", DEFAULTS["max_retries"])),
         "temperature": float(doc.get("temperature", DEFAULTS["temperature"])),
         "max_tokens": int(doc.get("max_tokens", DEFAULTS["max_tokens"])),
     }, created
+
+
+def swap(project: Path, decision: dict, role: str, old: str, new: str, reason: str) -> None:
+    """Persist a swap (candidate, judge or verifier model) so later runs stay comparable."""
+    path = config_path(project)
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    entry = doc["decisions"][str(decision["id"])]
+    if role == "candidate":
+        for c in entry["candidates"]:
+            if c["model"] == old:
+                c.update(model=new, why=f"replaced {old}: {reason}")
+    elif role == "judge":
+        entry["judge"], entry["judge_why"] = new, f"replaced {old}: {reason}"
+        entry["judges"] = [new if j == old else j for j in entry.get("judges", [new])]
+    elif role == "judge2":
+        entry["judges"] = [new if j == old else j for j in entry.get("judges", [])]
+        entry["second_judge_why"] = f"replaced {old}: {reason}"
+    if entry.get("verifier_model") == old:
+        entry["verifier_model"], entry["verifier_why"] = new, f"replaced {old}: {reason}"
+    entry.setdefault("swaps", []).append({
+        "role": role, "old": old, "new": new, "reason": reason,
+        "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    text = path.read_text(encoding="utf-8")
+    header = "".join(l + "\n" for l in text.splitlines() if l.startswith("#"))
+    path.write_text(header + yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")

@@ -2,23 +2,26 @@ import json
 
 import pytest
 
-from conftest import MODELS
+from conftest import CATALOG, CHOSEN, JUDGE, SMALL_OTHER, SMALL_SAME, FakeTransport, make_client
 from notbydefault.fit import candidates, checks
 from notbydefault.fit.callsite import CallSite
 from notbydefault.fit.evaluate import ALONE, VERIFIED, BudgetExceeded, Caller, SpendGuard
+from notbydefault.fit.providers import RateLimiter, load_catalog
 from notbydefault.fit.stats import SetupStats, bootstrap_ci, decide, parse_number
 from notbydefault.fit.tracing import Tracer
 from notbydefault.fit.verifiers import Verifiers, generate, load, verify
-from notbydefault.openrouter import Price, parse_json, pricing_from_models
+from notbydefault.llm import DailyLimitReached, Price, classify_429, parse_json
 
-PRICING = pricing_from_models(MODELS)
+PRICING = make_client().pricing()
 
 
-# --- openrouter helpers --------------------------------------------------------
+# --- llm helpers ------------------------------------------------------------------
 
 def test_price_cost_is_per_token():
     assert Price(2.5e-6, 10e-6).cost(1000, 100) == pytest.approx(0.0035)
-    assert PRICING.price("openai/gpt-4o").prompt == pytest.approx(2.5e-6)
+    p = PRICING.price(CHOSEN)
+    assert p.prompt == pytest.approx(2.5e-6)
+    assert (p.source_url, p.fetched_at) == ("https://groq.test/models", "2026-10-10")
 
 
 @pytest.mark.parametrize("text", ['{"a": 1}', '```json\n{"a": 1}\n```', 'Sure! {"a": 1} done'])
@@ -26,13 +29,98 @@ def test_parse_json_tolerates_chatter(text):
     assert parse_json(text) == {"a": 1}
 
 
+GEMINI_DAILY = json.dumps([{"error": {"code": 429, "message": "You exceeded your current quota",
+    "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+        {"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]},
+        {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "40s"}]}}])
+GEMINI_MINUTE = GEMINI_DAILY.replace("PerDay", "PerMinute")
+GEMINI_NOT_FREE = json.dumps([{"error": {"code": 429, "message":
+    "Quota exceeded for metric: generate_content_free_tier_requests, limit: 0, model: gemini-3.1-pro",
+    "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "29954s"}]}}])
+GROQ_DAILY = json.dumps({"error": {"message": "Rate limit reached for model `openai/gpt-oss-120b` "
+    "on requests per day (RPD): Limit 1000, Used 1000", "type": "requests", "code": "rate_limit_exceeded"}})
+GROQ_MINUTE = json.dumps({"error": {"message": "Rate limit reached for model `openai/gpt-oss-120b` "
+    "on tokens per minute (TPM): Limit 8000, Used 7900", "code": "rate_limit_exceeded"}})
+
+
+@pytest.mark.parametrize("body,headers,kind,wait", [
+    (GEMINI_DAILY, {}, "daily", 40),
+    (GEMINI_MINUTE, {}, "minute", 40),
+    (GEMINI_NOT_FREE, {}, "unavailable", 29954),
+    (GROQ_DAILY, {"retry-after": "3600"}, "daily", 3600),
+    (GROQ_MINUTE, {"retry-after": "7"}, "minute", 7),
+    ("not json", {"retry-after": "1m26.4s"}, "minute", 86.4),
+])
+def test_classify_429(body, headers, kind, wait):
+    assert classify_429(body, headers) == (kind, pytest.approx(wait))
+
+
+# --- providers: catalog, throttle, cache --------------------------------------------
+
+def test_shipped_catalog_has_free_groq_and_gemini_with_price_sources():
+    cat = load_catalog()["providers"]
+    assert cat["groq"]["base_url"] == "https://api.groq.com/openai/v1"
+    assert cat["gemini"]["base_url"] == "https://generativelanguage.googleapis.com/v1beta/openai"
+    assert cat["groq"]["tier"] == cat["gemini"]["tier"] == "free"
+    assert cat["openrouter"]["enabled"] is False
+    for p in ("groq", "gemini"):
+        assert cat[p]["prices_source"].startswith("https://") and cat[p]["prices_fetched"]
+
+
+def test_project_catalog_override_merges(tmp_path):
+    (tmp_path / ".notbydefault").mkdir()
+    (tmp_path / ".notbydefault" / "providers.yaml").write_text(
+        "providers:\n  groq:\n    models:\n      openai/gpt-oss-20b: {rpm: 2}\n")
+    m = load_catalog(tmp_path)["providers"]["groq"]["models"]["openai/gpt-oss-20b"]
+    assert m["rpm"] == 2 and m["family"] == "gpt-oss"
+
+
+def test_rate_limiter_waits_for_rpm_and_tpm():
+    now = [0.0]
+    waits = []
+
+    def sleep(s):
+        waits.append(s)
+        now[0] += s
+    lim = RateLimiter(rpm=2, tpm=1000, sleep=sleep, clock=lambda: now[0])
+    lim.acquire(100)
+    lim.acquire(100)
+    lim.acquire(100)                   # third request in the same minute must wait
+    assert waits and sum(waits) == pytest.approx(60)
+    lim2 = RateLimiter(rpm=100, tpm=1000, sleep=sleep, clock=lambda: now[0])
+    waits.clear()
+    lim2.acquire(900)
+    lim2.acquire(200)                  # token budget exceeded: waits
+    assert waits
+
+
+def test_cache_means_a_request_is_never_made_twice(tmp_path):
+    client = make_client(cache_dir=tmp_path)
+    msgs = [{"role": "user", "content": "- a\n- b"}]
+    first = client.chat(CHOSEN, msgs)
+    second = client.chat(CHOSEN, msgs)
+    assert not first.cached and second.cached and second.text == first.text
+    assert second.cost == pytest.approx(first.cost)          # list-price estimate either way
+    assert len(client.transport.calls) == 1
+    client.chat(CHOSEN, msgs, max_tokens=99)                  # different settings: new request
+    assert len(client.transport.calls) == 2
+    fresh = make_client(cache_dir=tmp_path)                   # survives restarts
+    assert fresh.chat(CHOSEN, msgs).cached and fresh.transport.calls == []
+
+
+def test_free_tier_detection():
+    client = make_client()
+    assert client.free_tier([CHOSEN, JUDGE])
+    assert not client.free_tier([CHOSEN, "paidco:tiny-1"])
+
+
 # --- candidates -------------------------------------------------------------------
 
 @pytest.mark.parametrize("literal,expected", [
-    ("gpt-4o", "openai/gpt-4o"),
-    ("openai/gpt-4o", "openai/gpt-4o"),
-    ("claude-sonnet-4-5", "anthropic/claude-sonnet-4.5"),
-    ("claude-sonnet-4-5-20250929", "anthropic/claude-sonnet-4.5"),
+    ("openai/gpt-oss-120b", CHOSEN),
+    ("gpt-oss-120b", CHOSEN),
+    ("gemini-3.8-flash", JUDGE),
+    (CHOSEN, CHOSEN),
 ])
 def test_resolve_model_id(literal, expected):
     assert candidates.resolve_model_id(literal, PRICING) == expected
@@ -43,26 +131,29 @@ def test_resolve_unknown_model_raises():
         candidates.resolve_model_id("gpt-99-ultra", PRICING)
 
 
-def test_alternatives_are_cheaper_newest_and_from_other_providers():
-    alts = candidates.pick_alternatives("openai/gpt-4o", PRICING)
-    assert alts == ["anthropic/claude-haiku-5.5", "google/gemini-3.8-flash",
-                    "meta-llama/llama-4-scout"]
+def test_alternatives_are_small_free_models_of_same_and_other_family():
+    assert candidates.pick_alternatives(CHOSEN, PRICING) == [SMALL_SAME, SMALL_OTHER]
 
 
-def test_judge_is_strong_and_not_a_candidate():
-    assert candidates.pick_judge(["openai/gpt-4o"], PRICING) == "anthropic/claude-opus-5.5"
-    assert candidates.pick_judge(["anthropic/claude-opus-5.5"], PRICING) == \
-        "anthropic/claude-sonnet-4.5"
+def test_paid_models_are_never_picked():
+    assert "paidco:tiny-1" not in candidates.pick_alternatives(CHOSEN, PRICING, n=5)
+    assert candidates.pick_judge([], PRICING) != "paidco:tiny-1"
+
+
+def test_judge_is_a_strong_gemini_not_a_candidate():
+    assert candidates.pick_judge([CHOSEN, SMALL_SAME, SMALL_OTHER], PRICING) == JUDGE
+    assert candidates.pick_judge([JUDGE], PRICING) != JUDGE
 
 
 def test_candidates_yaml_created_once_with_price_source(tmp_path):
-    decision = {"id": 10, "label": "gpt-4o"}
+    decision = {"id": 10, "label": "openai/gpt-oss-120b"}
     cfg, created = candidates.load_or_create(tmp_path, decision, PRICING)
-    assert created and cfg["chosen"] == "openai/gpt-4o" and len(cfg["candidates"]) == 4
-    assert cfg["verifier_model"] == "meta-llama/llama-4-scout"   # cheapest candidate
+    assert created and cfg["chosen"] == CHOSEN
+    assert cfg["candidates"] == [CHOSEN, SMALL_SAME, SMALL_OTHER]
+    assert cfg["judge"] == JUDGE and cfg["verifier_model"] == SMALL_SAME   # cheapest candidate
+    assert cfg["max_retries"] == 2
     text = candidates.config_path(tmp_path).read_text()
-    assert "pricing_source: https://openrouter.ai/api/v1/models" in text
-    assert "pricing_fetched_at:" in text
+    assert "price_source: https://groq.test/models" in text and "price_fetched: '2026-10-10'" in text
     cfg2, created2 = candidates.load_or_create(tmp_path, decision, PRICING)
     assert not created2 and cfg2 == cfg
 
@@ -113,7 +204,7 @@ def caller_for(client, max_cost=1.0):
 
 def test_generated_verifier_file_is_reviewable_and_loads(tmp_path, fake_client):
     c = caller_for(fake_client)
-    v = generate(c.analyst("anthropic/claude-opus-5.5"), tmp_path, {"id": 10, "label": "gpt-4o"},
+    v = generate(c.analyst(JUDGE), tmp_path, {"id": 10, "label": "gpt-4o"},
                  SITE, {"goal": "Notes app", "constraints": ["Budget: $25"]}, "opus")
     text = v.path.read_text()
     assert "delete_files" not in text                       # outside the library: dropped
@@ -124,10 +215,10 @@ def test_generated_verifier_file_is_reviewable_and_loads(tmp_path, fake_client):
 
 def test_verify_skips_llm_when_deterministic_check_fails(fake_client):
     v = Verifiers([checks.max_words(3)], checks.llm_rubric("no invented facts"), None, "x")
-    r = verify(caller_for(fake_client), "meta-llama/llama-4-scout", v, "- a", "one two three four")
+    r = verify(caller_for(fake_client), SMALL_SAME, v, "- a", "one two three four")
     assert not r.passed and r.failed == ["max_words"]
-    assert fake_client.calls == []
-    r = verify(caller_for(fake_client), "meta-llama/llama-4-scout", v, "- a", "INVENTED fact")
+    assert fake_client.transport.calls == []
+    r = verify(caller_for(fake_client), SMALL_SAME, v, "- a", "INVENTED fact")
     assert not r.passed and r.failed == ["llm_rubric"] and r.cost > 0
 
 
@@ -146,8 +237,8 @@ def test_spend_guard_reserves_worst_case():
 def test_caller_refuses_call_over_cap(fake_client):
     c = caller_for(fake_client, max_cost=1e-9)
     with pytest.raises(BudgetExceeded):
-        c.chat("openai/gpt-4o", [{"role": "user", "content": "hi"}], span="x", role="candidate")
-    assert fake_client.calls == []
+        c.chat(CHOSEN, [{"role": "user", "content": "hi"}], span="x", role="candidate")
+    assert fake_client.transport.calls == []
 
 
 # --- stats + verdict ---------------------------------------------------------------------
@@ -204,5 +295,147 @@ def test_verdict_not_enough_evidence_when_only_intervals_overlap():
 
 
 def test_verdict_not_enough_evidence_with_few_scores():
-    v = decide(stats_of(S("big", ALONE, 4.5, 0.9, 0.01, scored=4)), "big")
+    v = decide(stats_of(S("big", ALONE, 4.5, 0.9, 0.01, scored=3)), "big")
     assert v.kind == "insufficient"
+
+
+# --- transport recoveries -----------------------------------------------------------
+
+class _Resp:
+    def __init__(self, body):
+        self.body = body
+
+    def read(self):
+        return self.body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _http_error(code, body, headers=None):
+    import io
+    import urllib.error
+    from email.message import Message
+    msg = Message()
+    for k, v in (headers or {}).items():
+        msg[k] = v
+    return urllib.error.HTTPError("https://x.test", code, "err", msg, io.BytesIO(body.encode()))
+
+
+def test_transport_backs_off_on_429_and_logs_the_reason(monkeypatch):
+    import urllib.request
+    from notbydefault.llm import OpenAICompatClient
+    ok = json.dumps({"choices": [{"message": {"content": "hi"}}], "usage": {}}).encode()
+    answers = [_http_error(429, GROQ_MINUTE, {"retry-after": "3"}),
+               _http_error(503, "overloaded"), _Resp(ok)]
+
+    def fake_urlopen(req, timeout):
+        a = answers.pop(0)
+        if isinstance(a, Exception):
+            raise a
+        return a
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    events, sleeps = [], []
+    c = OpenAICompatClient("groq", "https://x.test", "k", sleep=sleeps.append,
+                           on_event=lambda *a, **k: events.append((a, k)))
+    data, _ = c.complete("openai/gpt-oss-120b", [{"role": "user", "content": "x"}])
+    assert data["choices"][0]["message"]["content"] == "hi"
+    assert [e[0][0] for e in events] == ["rate_limit_backoff", "retry_failed_call"]
+    assert all(e[0][1] == "recovery" for e in events)
+    assert "429" in events[0][0][2] and "3.5s" in events[0][0][2]
+    assert "HTTP 503" in events[1][0][2]
+    assert sleeps[0] == pytest.approx(3.5)
+
+
+@pytest.mark.parametrize("code,body,unavailable", [
+    (429, GROQ_DAILY, False),
+    (429, GEMINI_DAILY, False),
+    (429, GEMINI_NOT_FREE, True),
+    (404, '{"error": {"message": "no longer available to new users"}}', True),
+])
+def test_transport_daily_and_unavailable_are_not_retried(monkeypatch, code, body, unavailable):
+    import urllib.request
+    from notbydefault.llm import ModelUnavailable, OpenAICompatClient
+    tries = []
+
+    def fake_urlopen(req, timeout):
+        tries.append(1)
+        raise _http_error(code, body)
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    c = OpenAICompatClient("gemini", "https://x.test", "k", sleep=lambda s: None)
+    with pytest.raises(ModelUnavailable if unavailable else DailyLimitReached):
+        c.complete("m", [{"role": "user", "content": "x"}])
+    assert len(tries) == 1
+
+
+def test_402_prepaid_credits_means_unavailable(monkeypatch):
+    import urllib.request
+    from notbydefault.llm import ModelUnavailable, OpenAICompatClient
+    tries = []
+
+    def fake_urlopen(req, timeout):
+        tries.append(1)
+        raise _http_error(402, '[{"error": {"message": "Your prepayment credits are depleted."}}]')
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    c = OpenAICompatClient("gemini", "https://x.test", "k", sleep=lambda s: None)
+    with pytest.raises(ModelUnavailable, match="402"):
+        c.complete("gemini-3.6-flash", [{"role": "user", "content": "x"}])
+    assert len(tries) == 1
+
+
+def test_hung_model_is_retried_once_then_reported(monkeypatch):
+    import urllib.request
+    from notbydefault.llm import LLMError, OpenAICompatClient
+    tries, events = [], []
+
+    def fake_urlopen(req, timeout):
+        tries.append(1)
+        raise TimeoutError("The read operation timed out")
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    c = OpenAICompatClient("gemini", "https://x.test", "k", sleep=lambda s: None,
+                           on_event=lambda *a, **k: events.append(a))
+    with pytest.raises(LLMError, match="timed out"):
+        c.complete("gemini-3.8-flash", [{"role": "user", "content": "x"}])
+    assert len(tries) == 2                                   # not 6 x 120 s
+    assert [e[0] for e in events] == ["retry_failed_call"] and "timed out" in events[0][2]
+
+
+def test_catalog_unavailable_flag_keeps_model_out_of_selection():
+    import copy
+    cat = copy.deepcopy(CATALOG)
+    cat["providers"]["gemini"]["models"]["gemini-3.8-flash"]["available"] = False
+    pricing = make_client(catalog=cat).pricing()
+    assert candidates.pick_judge([CHOSEN, SMALL_SAME], pricing) == SMALL_OTHER   # not JUDGE
+
+
+def _without_gemini(extra_groq=None):
+    import copy
+    cat = copy.deepcopy(CATALOG)
+    for m in cat["providers"]["gemini"]["models"].values():
+        m["available"] = False
+    cat["providers"]["groq"]["models"].update(extra_groq or {})
+    return make_client(catalog=cat).pricing()
+
+
+def test_judge_falls_back_to_strongest_non_qwen_when_no_gemini_works():
+    pricing = _without_gemini({"llama-4-maverick": {"family": "llama", "size": "large",
+                                                    "strength": 2, "in": 0.2, "out": 0.6}})
+    assert candidates.pick_judge([CHOSEN, SMALL_SAME], pricing) == "groq:llama-4-maverick"
+
+
+def test_qwen_is_never_the_fallback_judge():
+    from conftest import SWAP_IN
+    pricing = _without_gemini()      # only qwen is left that isn't excluded
+    with pytest.raises(LookupError):
+        candidates.pick_judge([CHOSEN, SMALL_SAME, SWAP_IN], pricing)
+
+
+def test_rejection_reason_says_when_a_pricier_setup_is_clearly_better():
+    v = decide(stats_of(S("big", ALONE, 3.25, 1.0, 0.0001, lo=2.75, hi=3.62),
+                        S("small", ALONE, 3.5, 1.0, 0.00007, lo=3.12, hi=3.88),
+                        S("lite", ALONE, 4.75, 1.0, 0.00011, lo=4.38, hi=5.0)), "big")
+    assert v.recommended == ("small", ALONE)
+    assert v.rejected["lite/alone"].startswith("higher quality 4.75")

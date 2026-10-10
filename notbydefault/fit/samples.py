@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from notbydefault.fit.callsite import CallSite
-from notbydefault.openrouter import parse_json
+from notbydefault.llm import parse_json
 
 GENERATE_SYSTEM = "You write realistic test data for AI features. Answer with one JSON object only."
 
@@ -64,3 +64,41 @@ def generate(chat, project: Path, decision_id: int, site: CallSite, n: int = 20,
 def source_label(rows: list[dict]) -> str:
     sources = sorted({r.get("source", "provided") for r in rows})
     return "/".join(sources)
+
+
+EXTEND_PROMPT = """An application feature does this: {task}
+
+How its user message is built: {user_message_format}
+What real inputs look like: {input_description}
+
+These test inputs already exist:
+{existing}
+
+Write {n} NEW realistic user messages, formatted exactly as the code would send them, that
+differ from all of the above (other topics, lengths and awkward cases). Return:
+{{"inputs": ["<user message 1>", ...]}}"""
+
+
+def extend(chat, project: Path, decision_id: int, site: CallSite, rows: list[dict], n: int,
+           reason: str, generator: str = "") -> list[dict]:
+    """Append n new synthetic inputs (different from `rows`) to the samples file."""
+    existing = "\n".join(f"- {json.dumps(r['user_message'], ensure_ascii=False)[:300]}"
+                         for r in rows)
+    reply = chat([
+        {"role": "system", "content": GENERATE_SYSTEM},
+        {"role": "user", "content": EXTEND_PROMPT.format(
+            task=site.task, user_message_format=site.user_message_format,
+            input_description=site.input_description, existing=existing, n=n)},
+    ])
+    data = parse_json(reply.text)
+    inputs = data.get("inputs") if isinstance(data, dict) else data
+    seen = {r["user_message"] for r in rows}
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    new = [{"user_message": str(t), "source": "synthetic", "generated_by": generator,
+            "generated_at": now, "expansion_reason": reason}
+           for t in (inputs or []) if str(t).strip() and str(t) not in seen][:n]
+    if new:
+        with open(samples_path(project, decision_id), "a", encoding="utf-8") as f:
+            for r in new:
+                f.write(json.dumps(r, ensure_ascii=False) + "\n")
+    return rows + new

@@ -16,6 +16,22 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:\\Users\\misch\\notbydefault\\.venv\\Scripts\\python.exe",
+            "args": [
+              "C:\\Users\\misch\\notbydefault\\notbydefault\\hooks\\user_prompt.py",
+              "--project",
+              "C:\\Users\\misch\\notbydefault\\demo-app"
+            ],
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }

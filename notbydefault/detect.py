@@ -92,6 +92,7 @@ KNOWN_SCOPES: dict[str, tuple[str, str]] = {
 MODEL_ID = re.compile(
     r"""["'`](
         gpt-\d[\w.:-]*
+      | (?:openai/)?gpt-oss-[\w.:-]+
       | chatgpt-[\w.:-]+
       | o[134](?:-(?:mini|pro|preview|deep-research|\d{4}-\d{2}-\d{2}))*
       | claude-(?:opus|sonnet|haiku|fable|instant|\d)[\w.:@-]*
@@ -102,14 +103,15 @@ MODEL_ID = re.compile(
       | command-r[\w.:-]*
       | deepseek-[\w.:-]+
       | grok-\d[\w.:-]*
-      | qwen[\d.]*-[\w.:-]+
+      | (?:qwen/)?qwen[\d.]*-[\w.:-]+
+      | gemma-?\d[\w.:-]*
       | text-embedding-[\w.:-]+
     )["'`]""",
     re.IGNORECASE | re.VERBOSE,
 )
 
 MODEL_PROVIDERS = [
-    ("gpt-", "OpenAI"), ("chatgpt-", "OpenAI"), ("o1", "OpenAI"), ("o3", "OpenAI"),
+    ("gpt-", "OpenAI"), ("openai/", "OpenAI"), ("gemma", "Google"), ("chatgpt-", "OpenAI"), ("o1", "OpenAI"), ("o3", "OpenAI"),
     ("o4", "OpenAI"), ("text-embedding-", "OpenAI"), ("claude-", "Anthropic"),
     ("gemini-", "Google"), ("meta-llama/", "Meta"), ("llama", "Meta"),
     ("mistral-", "Mistral"), ("codestral-", "Mistral"), ("ministral-", "Mistral"),
