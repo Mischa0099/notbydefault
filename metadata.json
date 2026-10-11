@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4MJAZVAK7CTW1AVFYJAX655",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "eval/cases/detection.json",
+    "eval/cases/fit.json",
+    "eval/cases/pivot.json",
+    "eval/cases/project_heldout.json",
+    "eval/cases/requirements.json",
+    "eval/results/v2.json",
+    "notbydefault/cli.py",
+    "notbydefault/detect.py",
+    "notbydefault/evals.py",
+    "notbydefault/hooks/pre_tool.py",
+    "notbydefault/hooks/user_prompt.py",
+    "notbydefault/pivot.py",
+    "notbydefault/stale.py",
+    "tests/conftest.py",
+    "tests/test_briefing.py",
+    "tests/test_detect.py",
+    "tests/test_evals.py",
+    "tests/test_hook_and_cli.py",
+    "tests/test_pivot_stale.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 230,
+    "cache_creation_tokens": 277374,
+    "cache_read_tokens": 22396607,
+    "output_tokens": 131525,
+    "api_call_count": 113
+  }
+}

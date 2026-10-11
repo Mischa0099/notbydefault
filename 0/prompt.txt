@@ -1,0 +1,111 @@
+<pasted_content id="3ec3">
+Milestone 5: measure NotByDefault itself, with known right answers.
+Use Groq for LLM calls; Gemini's quota resets at 12:30 IST, so anything that
+needs Gemini (check verdicts with the Gemini judge) must use cached results
+or be marked "pending" and resumable. Don't write to demo-app/.notbydefault;
+use throwaway copies.
+
+1. eval/cases/: small scenarios with known right answers, across every
+   feature:
+   - Detection: tool calls that ARE decisions (new DB SDK, hardcoded model,
+     new AI provider) and ones that are NOT (reading files, ordinary edits,
+     installing a test library). Measure detection precision/recall and
+     false interruptions.
+   - Pivot Check: real pivots vs ordinary prompts containing words like
+     "actually", "instead". Measure pivot precision/recall and LLM calls
+     per ordinary prompt.
+   - Requirements: e.g. EU residency, HIPAA, budget cut, 10x users. Expected
+     stale / needs review / unaffected per decision. Measure accuracy.
+   - Model fit: decision #21's verdict from cached results; mark pending if
+     the final judged run hasn't happened yet.
+2. `notbydefault eval` runs everything, prints a results table, saves
+   eval/results/v1.json with a neatlogs trace id per section, and lists
+   every failure with the reason.
+3. Stop after v1 and show me the failures. I'll choose what to fix; then
+   we'll rerun as v2 and produce a before/after table.
+Tag spans with focus_area as before. Do not commit; write the commit
+message (no Co-Authored-By line) to msg.txt and show it to me.
+</pasted_content id="3ec3">
+
+---
+
+<task-notification>
+<task-id>b3ltctb97</task-id>
+<tool-use-id>toolu_01GJMAWpj4SRDu1pwRLAbZcK</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\b644fea6-b4ce-46b5-9aec-c7c9a214f466\tasks\b3ltctb97.output</output-file>
+<status>completed</status>
+<summary>Background command "Smoke-run the requirements section against Groq" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+type msg.txt
+
+---
+
+<pasted_content id="3ec3">
+Fix for v2, in this order, then stop:
+1. R2: the requirement-to-checks step must only create a constraint the
+   requirement text actually states (no data_residency from "HIPAA"). Add a
+   test that HIPAA alone never makes anything stale.
+2. R1: in `require`, compute cost facts (list price x recorded volume, the
+   same math Pivot Check uses) so budget cuts and user growth mark a model
+   decision stale when it provably exceeds the budget; pass these facts to
+   the judge.
+3. D4 + D3: one shared check "already decided in this project": skip
+   interrupting when the model/service is already a reviewed/accepted
+   decision or already used elsewhere in the project (count it as seen).
+4. Fix test_hook_asks_and_records_decision to expect the quoted path.
+5. P1: widen the pivot pre-filter modestly ("going with", "from now on",
+   "not X", common aliases like Mongo/Postgres/Gemini <version>), and report
+   how LLM calls per ordinary prompt change.
+Then run `notbydefault eval --version v2` and produce a before/after table
+v1 vs v2 for every metric, with trace ids. List remaining failures as known
+limitations. Full test suite must pass. Do not commit; write the commit
+message (no Co-Authored-By line) to msg.txt and show it to me.
+</pasted_content id="3ec3">
+
+---
+
+<task-notification>
+<task-id>bfs3gnt85</task-id>
+<tool-use-id>toolu_019CqsUMTbvMHn3hcqMYFtXZ</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\b644fea6-b4ce-46b5-9aec-c7c9a214f466\tasks\bfs3gnt85.output</output-file>
+<status>completed</status>
+<summary>Background command "Run eval v2 with tracing" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bwom572lq</task-id>
+<tool-use-id>toolu_013hEs58HzHwVPjPd7jeg7M1</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\b644fea6-b4ce-46b5-9aec-c7c9a214f466\tasks\bwom572lq.output</output-file>
+<status>completed</status>
+<summary>Monitor "eval v2 completion" stream ended</summary>
+<event>Saved eval/results/v2.json</event>
+</task-notification>
+
+---
+
+<pasted_content id="3ec3">
+6. D1: detect model names outside quoted strings: .env lines
+   (OPENAI_MODEL=gpt-4o-mini), YAML/TOML config (model: gemini-2.5-flash),
+   and similar config files. Keep false positives low: only known model-name
+   patterns, only in config-like files or assignments.
+7. P2: treat a change of goal or deadline ("forget the 2-week MVP", "we now
+   need this by Friday") as a pivot even with no stack word, by also
+   matching against the graph's goal and constraint nodes in the pre-filter.
+8. R3: reduce over-flagging in `require`: the judge must name the concrete
+   property of the decision that the requirement touches (e.g. "stores
+   personal data", "costs scale with volume"); if it can't, the decision is
+   "valid", not "needs review". Add the property to the reason shown.
+9. Held-out check: after the fixes, add 2-3 NEW cases per section that are
+   similar in spirit but were not used while fixing (different wording,
+   services and requirements). Report results on the original cases and on
+   the held-out cases separately in the v2 table.
+</pasted_content id="3ec3">
+
+---
+
+type msg.txt
