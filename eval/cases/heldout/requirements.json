@@ -1,0 +1,21 @@
+{
+  "_comment": "Held-out `require` cases against eval/cases/heldout/project.json (5,000 users x 10 calls/month = 50,000 model calls/month, $100/month budget): written before the v3 fixes and never used to tune them. gpt-oss-20b at list price with 1000 in + 300 out tokens per call: about $8.25/month at 1x, $412/month at 50x.",
+  "cases": [
+    {"id": "hd-req-eu", "project": "heldout/project",
+     "requirement": "Customer invoices must be stored and processed only within the European Union.",
+     "expect": {"supabase": "needs_review", "stripe": "needs_review", "anthropic_sdk": "needs_review",
+                "gpt_oss_20b": "stale", "claude_sonnet": ["needs_review", "stale"], "prisma": "valid"},
+     "notes": "Groq documents US-only storage. Supabase's region is chosen per project. Nothing documented for Stripe or Anthropic; Claude's provider is not in the catalog. Prisma stores nothing."},
+    {"id": "hd-req-growth", "project": "heldout/project",
+     "requirement": "We expect 50x more users after the marketing launch.",
+     "expect": {"supabase": ["needs_review", "valid"], "stripe": ["needs_review", "valid"],
+                "anthropic_sdk": ["needs_review", "valid"], "gpt_oss_20b": "stale",
+                "claude_sonnet": ["stale", "needs_review"], "prisma": "valid"},
+     "notes": "50x the recorded 5,000 users: gpt-oss-20b about $412/month, over the $100 budget. Claude Sonnet is over too, but its price is not in the catalog."},
+    {"id": "hd-req-control", "project": "heldout/project",
+     "requirement": "Add a dark mode to the dashboard.",
+     "expect": {"supabase": "valid", "stripe": "valid", "anthropic_sdk": "valid",
+                "gpt_oss_20b": "valid", "claude_sonnet": "valid", "prisma": "valid"},
+     "notes": "Control: nothing is affected."}
+  ]
+}

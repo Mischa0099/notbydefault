@@ -90,6 +90,21 @@ def load(name: str) -> dict:
     return json.loads((CASES / f"{name}.json").read_text(encoding="utf-8"))
 
 
+CASE_SETS = ("all", "original", "heldout")
+
+
+def load_cases(section: str, which: str = "all") -> list[dict]:
+    """The section's cases: original (eval/cases/<section>.json, used while fixing) and/or
+    held-out (eval/cases/heldout/<section>.json, written before the fixes they measure)."""
+    out = []
+    if which in ("all", "original"):
+        out += [dict(c, split="original") for c in load(section)["cases"]]
+    held = CASES / "heldout" / f"{section}.json"
+    if which in ("all", "heldout") and held.exists():
+        out += [dict(c, split="heldout") for c in load(f"heldout/{section}")["cases"]]
+    return out
+
+
 def write_files(project: Path, files: dict) -> None:
     for rel, text in (files or {}).items():
         p = project / rel
@@ -147,7 +162,7 @@ class Bases:
 
     def get(self, name: str) -> tuple[Path, dict[str, int]]:
         if name not in self.built:
-            base = self.root / f"base-{name}"
+            base = self.root / ("base-" + name.replace("/", "-"))
             base.mkdir()
             self.built[name] = (base, build_project(base, load(name)))
         return self.built[name]
@@ -164,6 +179,27 @@ def ratio(a: int, b: int) -> float | None:
     return round(a / b, 3) if b else None
 
 
+_version = "dev"   # the eval version being run, for case span attributes
+
+
+def case_done(tracer, out, i: int, total: int, row: dict, seconds: float) -> None:
+    """Tag the case's span for neatlogs Conditions (called inside it) and print progress."""
+    failed = not row.get("ok") and row.get("status") != "pending"
+    tracer.annotate({"nbd.eval_case_failed": bool(failed), "nbd.eval_version": _version,
+                     "nbd.eval_case": row["case"], "nbd.eval_split": row.get("split", "original")})
+    progress(out, i, total, row, seconds)
+
+
+def progress(out, i: int, total: int, row: dict, seconds: float) -> None:
+    """One line per finished case, so a long run shows where it is."""
+    status = {"pending": "PENDING"}.get(row.get("status"), "ok" if row.get("ok") else "FAIL")
+    calls = row.get("llm_calls")
+    extra = f", {calls} LLM call(s)" + (f" ({row['llm_calls_cached']} cached)"
+                                        if row.get("llm_calls_cached") else "") if calls else ""
+    split_tag = " [held-out]" if row.get("split") == "heldout" else ""
+    out(f"    [{i}/{total}] {row['case']}{split_tag}: {status} ({seconds:.1f}s{extra})")
+
+
 # --- detection ---------------------------------------------------------------------------
 
 def _times_seen(project: Path) -> dict[tuple[int, str], int]:
@@ -174,13 +210,15 @@ def _times_seen(project: Path) -> dict[tuple[int, str], int]:
         return {(d["id"], d["label"]): d["data"].get("times_seen", 1) for d in g.nodes("decision")}
 
 
-def run_detection(tracer, out=print) -> dict:
+def run_detection(tracer, out=print, which: str = "all") -> dict:
     from notbydefault.hooks.pre_tool import handle
-    cases = load("detection")["cases"]
+    cases = load_cases("detection", which)
     rows, failures = [], []
     with tempfile.TemporaryDirectory(prefix="nbd-eval-det-") as tmp, \
             env(NOTBYDEFAULT_ENTIRE="0", NOTBYDEFAULT_TELEMETRY="0"):
-        for case in cases:
+        total = len(cases)
+        for i, case in enumerate(cases, 1):
+            t0 = time.perf_counter()
             project = Path(tmp) / case["id"]
             project.mkdir()
             write_files(project, case.get("files"))
@@ -224,6 +262,7 @@ def run_detection(tracer, out=print) -> dict:
                 rows.append({"case": case["id"], "split": split(case), "ok": ok,
                              "expected": case["expect"], "flagged": flagged, "asked": asked,
                              "ms": round(ms, 1), **({"reason": reason} if reason else {})})
+                case_done(tracer, out, i, total, rows[-1], time.perf_counter() - t0)
     return {"cases": rows, "failures": failures}
 
 
@@ -246,15 +285,17 @@ def detection_metrics(rows: list[dict]) -> dict:
 
 # --- pivot -------------------------------------------------------------------------------
 
-def run_pivot(tracer, out=print) -> dict:
+def run_pivot(tracer, out=print, which: str = "all") -> dict:
     from notbydefault.hooks.user_prompt import handle
-    cases = load("pivot")["cases"]
+    cases = load_cases("pivot", which)
     rows, failures = [], []
     with tempfile.TemporaryDirectory(prefix="nbd-eval-piv-") as tmp, \
             env(NOTBYDEFAULT_ENTIRE="0", NOTBYDEFAULT_TELEMETRY="0"):
         bases = Bases(Path(tmp))
         client = make_client(Path(tmp))
-        for case in cases:
+        total = len(cases)
+        for i, case in enumerate(cases, 1):
+            t0 = time.perf_counter()
             base, keys = bases.get(case.get("project", "project"))
             by_id = {v: k for k, v in keys.items()}
             project = Path(tmp) / case["id"]
@@ -311,6 +352,7 @@ def run_pivot(tracer, out=print) -> dict:
                              "mapping_ok": mapping_ok, "llm_calls": calls,
                              "llm_calls_cached": cached, "ms": round(ms, 1),
                              **({"reason": reason} if reason else {})})
+                case_done(tracer, out, i, total, rows[-1], time.perf_counter() - t0)
     return {"cases": rows, "failures": failures}
 
 
@@ -334,15 +376,17 @@ def pivot_metrics(rows: list[dict]) -> dict:
 
 # --- requirements ------------------------------------------------------------------------
 
-def run_requirements(tracer, out=print) -> dict:
+def run_requirements(tracer, out=print, which: str = "all") -> dict:
     from notbydefault.stale import require
-    cases = load("requirements")["cases"]
+    cases = load_cases("requirements", which)
     rows, failures = [], []
     with tempfile.TemporaryDirectory(prefix="nbd-eval-req-") as tmp, \
             env(NOTBYDEFAULT_ENTIRE="0", NOTBYDEFAULT_TELEMETRY="0"):
         bases = Bases(Path(tmp))
         client = make_client(Path(tmp))
-        for case in cases:
+        total = len(cases)
+        for i, case in enumerate(cases, 1):
+            t0 = time.perf_counter()
             base, keys = bases.get(case.get("project", "project"))
             project = Path(tmp) / case["id"]
             shutil.copytree(base, project)
@@ -386,6 +430,7 @@ def run_requirements(tracer, out=print) -> dict:
                              "requirement": case["requirement"], "constraints": constraints,
                              "decisions": per, "llm_calls": calls, "llm_calls_cached": cached,
                              **({"error": error} if error else {})})
+                case_done(tracer, out, i, total, rows[-1], time.perf_counter() - t0)
     return {"cases": rows, "failures": failures}
 
 
@@ -453,9 +498,12 @@ def fit_status(project: Path, did: int) -> dict:
             "decision_status": decision["data"].get("status")}
 
 
-def run_fit(tracer, out=print) -> dict:
+def run_fit(tracer, out=print, which: str = "all") -> dict:
     rows, failures = [], []
-    for case in load("fit")["cases"]:
+    cases = load_cases("fit", which)
+    total = len(cases)
+    for i, case in enumerate(cases, 1):
+        t0 = time.perf_counter()
         project = (REPO_ROOT / case["project"]).resolve()
         with tracer.step(f"case:{case['id']}", "verification",
                          reason="read the saved fit-check verdict (no model calls)"):
@@ -477,6 +525,7 @@ def run_fit(tracer, out=print) -> dict:
             tracer.event("fit_" + st["status"], "verification",
                          st.get("summary") or st.get("reason", ""), case=case["id"])
             rows.append(row)
+            case_done(tracer, out, i, total, rows[-1], time.perf_counter() - t0)
     return {"cases": rows, "failures": failures}
 
 
@@ -495,7 +544,8 @@ METRIC_FNS = {"detection": detection_metrics, "pivot": pivot_metrics,
 def score(section: dict, name: str) -> None:
     """metrics on the original cases (comparable across versions) and on the held-out ones."""
     rows = section["cases"]
-    section["metrics"] = METRIC_FNS[name]([r for r in rows if r.get("split", "original") == "original"])
+    orig = [r for r in rows if r.get("split", "original") == "original"]
+    section["metrics"] = METRIC_FNS[name](orig) if orig else None
     held = [r for r in rows if r.get("split") == "heldout"]
     section["heldout_metrics"] = METRIC_FNS[name](held) if held else None
 
@@ -531,7 +581,7 @@ def table(results: dict) -> list[str]:
     for sec, keys in METRICS.items():
         if sec not in s:
             continue
-        m, h = s[sec]["metrics"], s[sec].get("heldout_metrics") or {}
+        m, h = s[sec].get("metrics") or {}, s[sec].get("heldout_metrics") or {}
         for k in keys:
             rows.append((sec, k.replace("_", " "), _fmt(m.get(k)), _fmt(h.get(k))))
         if sec == "fit":
@@ -555,23 +605,36 @@ def failure_lines(results: dict) -> list[str]:
     return lines
 
 
-def compare(old: str, new: str, out=print) -> int:
-    """Before/after table of every metric and trace id: OLD and NEW on the original cases,
-    plus NEW on the held-out cases (written after the fixes, never used to tune them)."""
-    a, b = (json.loads((EVAL_DIR / "results" / f"{v}.json").read_text(encoding="utf-8"))
-            for v in (old, new))
-    rows = [("section", "metric", old, new, f"{new} held-out")]
+def _results(version: str) -> dict | None:
+    path = EVAL_DIR / "results" / f"{version}.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+
+
+def compare(versions: list[str], out=print) -> int:
+    """Every metric and trace id side by side: each version on the original cases, then each
+    version on the held-out cases (from <version>-heldout.json, or the version's own run)."""
+    files = {v: _results(v) for v in versions}
+    missing = [v for v, r in files.items() if r is None]
+    if missing:
+        out(f"No results for {', '.join(missing)} in eval/results/")
+        return 1
+    cols = [(v, files[v], "metrics") for v in versions]
+    for v in versions:
+        held = _results(f"{v}-heldout") or files[v]
+        if any((sec.get("heldout_metrics") for sec in held["sections"].values())):
+            cols.append((f"{v} held-out", held, "heldout_metrics"))
+    rows = [("section", "metric", *[c[0] for c in cols])]
     for sec, keys in METRICS.items():
-        sa, sb = a["sections"].get(sec, {}), b["sections"].get(sec, {})
         for k in keys:
-            rows.append((sec, k.replace("_", " "), _fmt(sa.get("metrics", {}).get(k)),
-                         _fmt(sb.get("metrics", {}).get(k)),
-                         _fmt((sb.get("heldout_metrics") or {}).get(k))))
-        rows.append((sec, "trace id", sa.get("trace_id") or "-", sb.get("trace_id") or "-",
-                     "(same trace)"))
+            rows.append((sec, k.replace("_", " "),
+                         *[_fmt(((r["sections"].get(sec) or {}).get(key) or {}).get(k))
+                           for _, r, key in cols]))
+        rows.append((sec, "trace id", *[(r["sections"].get(sec) or {}).get("trace_id") or "-"
+                                        for _, r, _k in cols]))
     out("\n".join(_grid(rows)))
+    last = versions[-1]
     out("")
-    out("\n".join(failure_lines(b)).replace("Failures", f"Remaining failures in {new}", 1))
+    out("\n".join(failure_lines(files[last])).replace("Failures", f"Remaining failures in {last}", 1))
     return 0
 
 
@@ -583,43 +646,69 @@ def git_commit() -> str:
         return ""
 
 
+def _printer(line: str = "") -> None:
+    print(line, flush=True)
+
+
 def run(version: str = "v1", sections: list[str] | None = None, out_path: Path | None = None,
-        out=print) -> int:
+        out=_printer, which: str = "all") -> int:
+    global _version
+    from notbydefault.awake import keep_awake
     from notbydefault.fit.tracing import make_tracer
-    sections = sections or list(SECTIONS)
+    _version = version
+    sections = sections or [s for s in SECTIONS if load_cases(s, which)]
     out_path = out_path or EVAL_DIR / "results" / f"{version}.json"
-    results = {"version": version, "sections": {}}
-    if out_path.exists() and set(sections) != set(SECTIONS):   # update some sections in place
+    results = {"version": version, "cases": which, "sections": {}}
+    if out_path.exists() and set(sections) != set(SECTIONS) and which == "all":   # update some sections in place
         results = json.loads(out_path.read_text(encoding="utf-8"))
     results.update(run_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                    commit=git_commit())
-    tracer = make_tracer("notbydefault-eval-" + version)
-    for name in sections:
-        out(f"running {name} ...")
-        started = time.perf_counter()
-        with tracer.root(f"notbydefault.eval.{name}", {"notbydefault.eval_version": version,
-                                                       "notbydefault.eval_section": name}):
-            trace_id = tracer.trace_id
-            section = RUNNERS[name](tracer, out)
-            score(section, name)
-            tracer.annotate({f"notbydefault.eval.{k}": v for k, v in section["metrics"].items()})
-            if section["heldout_metrics"]:
-                tracer.annotate({f"notbydefault.eval.heldout.{k}": v
-                                 for k, v in section["heldout_metrics"].items()})
-        section["trace_id"] = trace_id
-        section["seconds"] = round(time.perf_counter() - started, 1)
-        results["sections"][name] = section
-        h = section["heldout_metrics"]
-        out(f"  {name}: {section['metrics']['passed']}/{section['metrics']['cases']}"
-            + (f" (held-out {h['passed']}/{h['cases']})" if h else "")
-            + f" in {section['seconds']}s")
-        out_path.parent.mkdir(parents=True, exist_ok=True)   # save after every section
+    tracer = make_tracer("notbydefault-eval-" + version, spill_dir=EVAL_DIR / ".telemetry")
+
+    def save():
+        results["telemetry"] = {"exporter": "neatlogs" if tracer.enabled else "off",
+                                "export": getattr(tracer, "export_status", "off"),
+                                "journal": getattr(tracer, "journal_path", None)}
+        out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(json.dumps(results, indent=2, default=str) + "\n", encoding="utf-8")
-    tracer.flush()
+
+    with keep_awake():
+        for name in sections:
+            out(f"running {name} ...")
+            started = time.perf_counter()
+            with tracer.root(f"notbydefault.eval.{name}", {"notbydefault.eval_version": version,
+                                                           "notbydefault.eval_section": name}):
+                trace_id = tracer.trace_id
+                section = RUNNERS[name](tracer, out, which)
+                score(section, name)
+                if section["metrics"]:
+                    tracer.annotate({f"notbydefault.eval.{k}": v
+                                     for k, v in section["metrics"].items()})
+                if section["heldout_metrics"]:
+                    tracer.annotate({f"notbydefault.eval.heldout.{k}": v
+                                     for k, v in section["heldout_metrics"].items()})
+            section["trace_id"] = trace_id
+            section["seconds"] = round(time.perf_counter() - started, 1)
+            results["sections"][name] = section
+            m, h = section["metrics"], section["heldout_metrics"]
+            out(f"  {name}: "
+                + (f"{m['passed']}/{m['cases']}" if m else "")
+                + (f" (held-out {h['passed']}/{h['cases']})" if h else "")
+                + f" in {section['seconds']}s")
+            save()                                   # after every section
+        tracer.flush()                               # bounded; never hangs the eval
+    if not getattr(tracer, "export_ok", True):       # trace ids were never delivered
+        for section in results["sections"].values():
+            section["trace_exported"] = False
+    save()
 
     out("")
     out("\n".join(table(results)))
     out("")
     out("\n".join(failure_lines(results)))
-    out(f"\nSaved {out_path.relative_to(REPO_ROOT).as_posix() if out_path.is_relative_to(REPO_ROOT) else out_path}")
+    t = results["telemetry"]
+    if t["exporter"] == "neatlogs":
+        out(f"\nneatlogs export: {t['export']}" + (f"; journal kept in {t['journal']}"
+                                                   if t["journal"] else ""))
+    out(f"Saved {out_path.relative_to(REPO_ROOT).as_posix() if out_path.is_relative_to(REPO_ROOT) else out_path}")
     return 0

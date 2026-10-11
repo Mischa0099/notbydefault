@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import json
 import os
+import sys
 import threading
 import time
 from typing import Any, Callable
@@ -32,6 +33,23 @@ def _check_focus(focus_area: str) -> str:
     return focus_area
 
 
+class SpanAttrs:
+    """Attributes collected while a span runs, set on it when it ends."""
+
+    def __init__(self):
+        self.attrs: dict = {}
+
+    def set(self, **attrs) -> None:
+        self.attrs.update(attrs)
+
+
+def _safe_call(fn: Callable[[], dict]) -> dict:
+    try:
+        return fn() or {}
+    except Exception:
+        return {}
+
+
 class Tracer:
     """No-op tracer (tests, or no NEATLOGS_API_KEY) that still keeps the journal."""
     enabled = False
@@ -51,15 +69,28 @@ class Tracer:
                                  **{k: v for k, v in attrs.items() if v is not None}})
 
     @contextlib.contextmanager
-    def root(self, name: str, attrs: dict):
+    def root(self, name: str, attrs: dict, finish: Callable[[], dict] | None = None):
+        """The run's root span. `finish()` returns attributes set on it as it ends, on every
+        exit path (early returns and errors included)."""
         self._note("step", name, "execution")
-        yield
+        try:
+            yield
+        finally:
+            if finish is not None:
+                self._note("event", "root_summary", "execution", "", **_safe_call(finish))
 
     @contextlib.contextmanager
     def step(self, name: str, focus_area: str, reason: str = "", attrs: dict | None = None):
         """An explicit agent step (its own span)."""
         self._note("step", name, focus_area, reason, **(attrs or {}))
         yield
+
+    @contextlib.contextmanager
+    def span(self, name: str, kind: str, focus_area: str, attrs: dict | None = None):
+        """A lightweight span of a neatlogs kind (e.g. GUARDRAIL) that is not an agent step:
+        not journaled. Yields a SpanAttrs; what is .set() on it lands on the span as it ends."""
+        _check_focus(focus_area)
+        yield SpanAttrs()
 
     def event(self, name: str, focus_area: str, reason: str, **attrs) -> None:
         """A decision or recovery inside the current step/span, with the reason for it."""
@@ -103,19 +134,109 @@ def _attr(value):
     return json.dumps(value, default=str)[:MAX_ATTR_CHARS]
 
 
-class NeatlogsTracer(Tracer):
-    enabled = True
+EXPORT_TIMEOUT_S = 5        # each OTLP export request (spans and logs)
+FLUSH_DEADLINE_S = 20       # flush + shutdown together, however the backend behaves
 
-    def __init__(self, session_id: str | None = None):
+
+def _run_with_deadline(fn: Callable[[], Any], seconds: float) -> tuple[bool, Any]:
+    """(finished, result) of fn run in a daemon thread; a hung fn is abandoned, not awaited."""
+    box: dict = {}
+
+    def target():
+        try:
+            box["result"] = fn()
+        except Exception as e:      # reported to the caller as a failure
+            box["error"] = e
+    t = threading.Thread(target=target, name="notbydefault-telemetry", daemon=True)
+    t.start()
+    t.join(seconds)
+    if t.is_alive():
+        return False, None
+    if "error" in box:
+        raise box["error"]
+    return True, box.get("result")
+
+
+def default_spill_dir() -> "Path":
+    import tempfile
+    from pathlib import Path
+    return Path(tempfile.gettempdir()) / "notbydefault-telemetry"
+
+
+class NeatlogsTracer(Tracer):
+    """Exports to neatlogs, failing open: telemetry never blocks or breaks the work.
+
+    Spans leave through neatlogs' background batch exporter with a short per-request timeout;
+    flush and shutdown run against a hard deadline. Any neatlogs error switches export off for
+    the rest of the run (one warning), and when export failed or timed out the journal (every
+    step, event and call) is written to a local file so nothing is lost.
+    """
+    enabled = True
+    export_ok = True          # False after the first neatlogs failure
+    export_status = "ok"      # ok | failed: ... | timed out ...
+    journal_path: str | None = None
+    spill_dir = None
+
+    def _warn(self, msg: str) -> None:
+        print(msg, file=sys.stderr, flush=True)
+
+    def __init__(self, session_id: str | None = None, spill_dir=None, warn=None):
         super().__init__()
+        for var in ("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "OTEL_EXPORTER_OTLP_LOGS_TIMEOUT"):
+            os.environ.setdefault(var, str(EXPORT_TIMEOUT_S))
         import neatlogs
         from opentelemetry import context as otel_context
         from opentelemetry import trace as otel_trace
 
         self.neatlogs, self.otel_context, self.otel_trace = neatlogs, otel_context, otel_trace
         self.session_id = session_id
+        self.spill_dir = spill_dir
+        if warn:
+            self._warn = warn
         neatlogs.init(workflow_name="notbydefault", tags=["check"],
                       register_shutdown_handlers=False)
+
+    # --- fail-open plumbing ---------------------------------------------------------
+
+    def _fail(self, what: str, error) -> None:
+        if not self.export_ok:
+            return
+        self.export_ok = False
+        self.export_status = f"failed: {what}: {error!r}"[:300]
+        self._note("event", "telemetry_failed", "recovery",
+                   f"neatlogs {what} failed ({error!r}); continuing without export, journal "
+                   "kept locally")
+        self._warn(f"NotByDefault: neatlogs {what} failed ({error!r}); continuing without "
+                   "telemetry export (the journal is kept locally).")
+
+    def _guard(self, what: str, fn: Callable[[], Any]):
+        if not self.export_ok:
+            return None
+        try:
+            return fn()
+        except Exception as e:
+            self._fail(what, e)
+            return None
+
+    @contextlib.contextmanager
+    def _span_cm(self, what: str, factory: Callable[[], Any]):
+        """Enter a neatlogs context manager if possible; the body runs either way."""
+        cm = self._guard(what, factory) if self.export_ok else None
+        entered = False
+        if cm is not None:
+            try:
+                cm.__enter__()
+                entered = True
+            except Exception as e:
+                self._fail(what, e)
+        try:
+            yield entered
+        finally:
+            if entered:
+                try:
+                    cm.__exit__(None, None, None)
+                except Exception as e:
+                    self._fail(what, e)
 
     def _span(self):
         """The active neatlogs span. In neatlogs' isolated mode it lives on a private
@@ -130,50 +251,154 @@ class NeatlogsTracer(Tracer):
         return self.otel_trace.get_current_span()
 
     def _set(self, attrs: dict) -> None:
-        span = self._span()
-        for k, v in attrs.items():
-            if v is not None:
-                span.set_attribute(k, _attr(v))
+        def go():
+            span = self._span()
+            for k, v in attrs.items():
+                if v is not None:
+                    span.set_attribute(k, _attr(v))
+        self._guard("set_attribute", go)
+
+    # --- Tracer API -------------------------------------------------------------------
 
     @contextlib.contextmanager
-    def root(self, name: str, attrs: dict):
-        with self.neatlogs.trace(name=name, kind="WORKFLOW", session_id=self.session_id):
-            ctx = self._span().get_span_context()
-            if ctx.trace_id:
-                self.trace_id = format(ctx.trace_id, "032x")
+    def root(self, name: str, attrs: dict, finish: Callable[[], dict] | None = None):
+        self._roots_open = getattr(self, "_roots_open", 0) + 1
+        try:
+            with self._root(name, attrs, finish):
+                yield
+        finally:
+            self._roots_open -= 1
+            if not self._roots_open and getattr(self, "_flush_pending", False):
+                self._flush_pending = False
+                self.flush()
+
+    @contextlib.contextmanager
+    def _root(self, name: str, attrs: dict, finish: Callable[[], dict] | None):
+        with self._span_cm("trace", lambda: self.neatlogs.trace(
+                name=name, kind="WORKFLOW", session_id=self.session_id)) as entered:
+            if entered:
+                ctx = self._guard("trace id", lambda: self._span().get_span_context())
+                if ctx is not None and ctx.trace_id:
+                    self.trace_id = format(ctx.trace_id, "032x")
             self._note("step", name, "execution", trace_id=self.trace_id)
-            self._set({"focus_area": "execution", **attrs})
-            yield
+            if entered:
+                self._set({"focus_area": "execution", **attrs})
+            try:
+                yield
+            finally:
+                if finish is not None:
+                    summary = _safe_call(finish)
+                    self._note("event", "root_summary", "execution", "", **summary)
+                    if entered:
+                        self._set(summary)
 
     @contextlib.contextmanager
     def step(self, name: str, focus_area: str, reason: str = "", attrs: dict | None = None):
         self._note("step", name, focus_area, reason, **(attrs or {}))
-        with self.neatlogs.trace(name=name, kind="CHAIN"):
-            self._set({"focus_area": focus_area, "notbydefault.reason": reason or None,
-                       **{f"notbydefault.{k}": v for k, v in (attrs or {}).items()}})
+        with self._span_cm("span", lambda: self.neatlogs.trace(name=name, kind="CHAIN")) as entered:
+            if entered:
+                self._set({"focus_area": focus_area, "notbydefault.reason": reason or None,
+                           **{f"notbydefault.{k}": v for k, v in (attrs or {}).items()}})
             yield
+
+    @contextlib.contextmanager
+    def span(self, name: str, kind: str, focus_area: str, attrs: dict | None = None):
+        _check_focus(focus_area)
+        box = SpanAttrs()
+        with self._span_cm("span", lambda: self.neatlogs.trace(name=name, kind=kind)) as entered:
+            if entered:
+                self._set({"focus_area": focus_area, **(attrs or {})})
+            try:
+                yield box
+            finally:
+                if entered and box.attrs:
+                    self._set(box.attrs)
 
     def event(self, name: str, focus_area: str, reason: str, **attrs) -> None:
         self._note("event", name, focus_area, reason, **attrs)
-        try:
+
+        def go():
             self._span().add_event(name, {"focus_area": focus_area, "reason": reason[:MAX_ATTR_CHARS],
                                           **{k: _attr(v) for k, v in attrs.items() if v is not None}})
             self.neatlogs.log("{event}: {reason}", level="warning" if focus_area == "recovery"
                               else "info", event=name, focus_area=focus_area, reason=reason,
                               **{k: v for k, v in attrs.items() if v is not None})
-        except Exception:
-            pass
+        self._guard("event", go)
 
     def llm(self, name, fn, before, after, kind="TOOL", focus_area="tool_use"):
-        _check_focus(focus_area)
+        """A model call as a neatlogs LLM span, so neatlogs shows its tokens and spend.
 
-        @self.neatlogs.span(kind=kind, name=name, capture_input=False, capture_output=False)
-        def _call():
-            self._set({"focus_area": focus_area, **before})
+        neatlogs' span decorator has no LLM kind; its own provider wrappers (neatlogs.wrap)
+        start spans with neatlogs.span.kind="llm" and neatlogs.llm.* attributes through its
+        provider tracer, and that is what this does for our plain-HTTP calls. `kind` (the
+        call's role: judge -> EVALUATOR, verifier -> GUARDRAIL) is kept as an attribute."""
+        _check_focus(focus_area)
+        if self.record_calls:
+            self._note("call", name, focus_area, "", span_kind=kind,
+                       attrs={k: v for k, v in before.items() if k != "input.value"})
+        if not self.export_ok:
+            return fn()
+        span = self._guard("llm span", lambda: self._start_llm_span(name, before, kind, focus_area))
+        if span is None:
+            return fn()
+        try:
             result = fn()
-            self._set(after(result))
-            return result
-        return _call()
+        except BaseException as e:      # the model call's own error: recorded, re-raised as is
+            def failed():
+                from opentelemetry.trace import StatusCode
+                span.set_status(StatusCode.ERROR, str(e)[:500])
+                span.record_exception(e)
+                span.end()
+            self._guard("llm span", failed)
+            raise
+        self._guard("llm span", lambda: self._end_llm_span(
+            span, {**before, **_safe_after(after, result)}))
+        return result
+
+    def _start_llm_span(self, name: str, before: dict, kind: str, focus_area: str):
+        from neatlogs._wrap_utils import get_provider_tracer
+        model = str(before.get("llm.model_name") or "")
+        provider, _, native = model.partition(":") if ":" in model else ("", "", model)
+        params = before.get("llm.invocation_parameters") or {}
+        attrs = {"neatlogs.span.kind": "llm", "neatlogs.llm.provider": provider or "unknown",
+                 "neatlogs.llm.system": provider or "unknown", "neatlogs.llm.model_name": native,
+                 "neatlogs.llm.request_model": native, "focus_area": focus_area,
+                 "notbydefault.span_kind": kind}
+        for p in ("temperature", "max_tokens"):
+            if isinstance(params, dict) and params.get(p) is not None:
+                attrs[f"neatlogs.llm.{p}"] = params[p]
+        if before.get("input.value") is not None:
+            attrs["neatlogs.llm.input_messages.0.role"] = "user"
+            attrs["neatlogs.llm.input_messages.0.content"] = _attr(before["input.value"])
+        attrs.update({k: _attr(v) for k, v in before.items()
+                      if v is not None and k != "input.value"})
+        return get_provider_tracer().start_span(name=name, attributes=attrs)
+
+    @staticmethod
+    def _end_llm_span(span, attrs: dict) -> None:
+        from opentelemetry.trace import StatusCode
+        tin, tout = attrs.get("llm.token_count.prompt"), attrs.get("llm.token_count.completion")
+        cached = bool(attrs.get("notbydefault.cached"))
+        usage = {"neatlogs.llm.token_count.prompt": tin,
+                 "neatlogs.llm.token_count.completion": tout,
+                 "neatlogs.llm.token_count.total": attrs.get("llm.token_count.total"),
+                 # spend: what this call cost now (a cache hit costs nothing); the list-price
+                 # cost of its tokens stays in notbydefault.cost_usd
+                 "neatlogs.llm.cost_usd": 0.0 if cached else attrs.get("notbydefault.cost_usd"),
+                 "neatlogs.llm.metrics.duration_ms":
+                     round(float(attrs.get("notbydefault.latency_s") or 0) * 1000, 3)}
+        if attrs.get("output.value") is not None:
+            usage["neatlogs.llm.output_messages.0.role"] = "assistant"
+            usage["neatlogs.llm.output_messages.0.content"] = _attr(attrs["output.value"])
+        if attrs.get("notbydefault.finish_reason"):
+            usage["neatlogs.llm.output_messages.0.finish_reason"] = attrs["notbydefault.finish_reason"]
+        rest = {k: v for k, v in attrs.items()
+                if k not in ("input.value", "output.value", "llm.invocation_parameters")}
+        for k, v in {**rest, **usage}.items():
+            if v is not None:
+                span.set_attribute(k, _attr(v))
+        span.set_status(StatusCode.OK)
+        span.end()
 
     def annotate(self, attrs):
         self._set(attrs)
@@ -190,17 +415,81 @@ class NeatlogsTracer(Tracer):
         return run
 
     def flush(self) -> None:
-        self.neatlogs.flush(timeout_millis=30000)
-        self.neatlogs.shutdown(timeout_millis=10000)
+        """Export what is queued, but never wait longer than FLUSH_DEADLINE_S.
+
+        Called inside a root span (an early return), it waits until the root ends, so the
+        root's closing attributes are exported too."""
+        if getattr(self, "_roots_open", 0):
+            self._flush_pending = True
+            return
+        if getattr(self, "_flushed", False):
+            return
+        self._flushed = True
+        failures = 0
+        if self.export_ok:
+            started = time.monotonic()
+            try:
+                done, _ = _run_with_deadline(
+                    lambda: self.neatlogs.flush(timeout_millis=int(FLUSH_DEADLINE_S * 700)),
+                    FLUSH_DEADLINE_S)
+                if done:
+                    try:
+                        failures = int(self.neatlogs.get_delivery_diagnostics()
+                                       .get("span_export_failures", 0) or 0)
+                    except Exception:
+                        failures = 0
+                    left = max(1.0, FLUSH_DEADLINE_S - (time.monotonic() - started))
+                    _run_with_deadline(lambda: self.neatlogs.shutdown(
+                        timeout_millis=int(left * 700)), left)
+                else:
+                    self.export_ok = False
+                    self.export_status = f"timed out flushing after {FLUSH_DEADLINE_S}s"
+                    self._warn(f"NotByDefault: neatlogs did not finish exporting within "
+                               f"{FLUSH_DEADLINE_S}s; continuing (the journal is kept locally).")
+            except Exception as e:
+                self._fail("flush", e)
+            if failures and self.export_ok:
+                self.export_ok = False
+                self.export_status = f"failed: {failures} span export batch(es) failed"
+                self._warn(f"NotByDefault: {failures} neatlogs span export batch(es) failed; "
+                           "the journal is kept locally.")
+        if not self.export_ok:
+            self.journal_path = self.spill()
+
+    def spill(self) -> str | None:
+        """Write the journal to a local file (when export failed); returns its path."""
+        from pathlib import Path
+        try:
+            folder = Path(self.spill_dir) if self.spill_dir else default_spill_dir()
+            folder.mkdir(parents=True, exist_ok=True)
+            path = folder / f"{time.strftime('%Y%m%dT%H%M%S')}-{self.trace_id or 'no-trace'}.json"
+            path.write_text(json.dumps({"trace_id": self.trace_id, "session_id": self.session_id,
+                                        "export_status": self.export_status,
+                                        "journal": self.journal}, indent=1, default=str),
+                            encoding="utf-8")
+            self._warn(f"NotByDefault: telemetry journal saved to {path}")
+            return str(path)
+        except OSError as e:
+            self._warn(f"NotByDefault: could not save the telemetry journal ({e!r})")
+            return None
 
 
-def make_tracer(session_id: str | None = None) -> Tracer:
+def _safe_after(after: Callable[[Any], dict], result) -> dict:
+    try:
+        return after(result) or {}
+    except Exception:
+        return {}
+
+
+def make_tracer(session_id: str | None = None, spill_dir=None) -> Tracer:
     load_env()
     if not os.environ.get("NEATLOGS_API_KEY") or os.environ.get("NOTBYDEFAULT_TELEMETRY") == "0":
         return Tracer()
     try:
-        return NeatlogsTracer(session_id)
-    except Exception:
+        return NeatlogsTracer(session_id, spill_dir=spill_dir)
+    except Exception as e:
+        print(f"NotByDefault: neatlogs unavailable ({e!r}); continuing without telemetry export.",
+              file=sys.stderr, flush=True)
         return Tracer()
 
 

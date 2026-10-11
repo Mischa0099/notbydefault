@@ -198,3 +198,31 @@ def test_config_model_already_there_is_not_new(tmp_path):
     env = tmp_path / ".env"
     env.write_text("OPENAI_MODEL=gpt-4o-mini\n")
     assert detect(write(env, "OPENAI_MODEL=gpt-4o-mini\nLOG_LEVEL=debug\n")) == []
+
+
+# --- appending to a requirements file from the shell (D2) ------------------------------------
+
+@pytest.mark.parametrize("command,expected", [
+    ("echo openai >> requirements.txt", [("service", "OpenAI")]),
+    ('echo "pymongo==4.6" >> requirements-dev.txt', [("service", "MongoDB")]),
+    ("echo groq | tee -a requirements.txt", [("service", "Groq")]),
+    ('Add-Content -Path requirements.txt -Value "stripe"', [("service", "Stripe")]),
+    ('"supabase" | Out-File -Append requirements.txt', [("service", "Supabase")]),
+])
+def test_appending_to_requirements_is_an_install(command, expected):
+    assert chosen(detect(bash(command))) == expected
+
+
+def test_multi_line_append_finds_every_package():
+    cmd = r'printf "anthropic\nredis\n" >> requirements.txt'
+    assert sorted(chosen(detect(bash(cmd)))) == [("service", "Anthropic"), ("service", "Redis")]
+
+
+@pytest.mark.parametrize("command", [
+    "echo openai >> notes.txt",            # not a manifest
+    "echo $PATH >> requirements.txt",      # not a package name
+    "echo pytest >> requirements.txt",     # not a known service
+    "cat requirements.txt",
+])
+def test_other_appends_are_not_installs(command):
+    assert detect(bash(command)) == []

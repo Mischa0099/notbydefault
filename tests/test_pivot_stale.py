@@ -587,3 +587,53 @@ def test_needs_review_reason_shows_the_property(project):
         assert mongo["status"] == "needs_review"
         assert mongo["review_reason"].startswith("stores personal data: ")
     assert "why:   stores personal data: " in report
+
+
+# --- mapping a pivot by purpose ---------------------------------------------------------------
+
+VIEW = [
+    {"id": 1, "label": "openai/gpt-oss-120b", "kind": "model", "files": ["actions.py"],
+     "used_for": "", "verdict": "Keep it on Groq for action items."},
+    {"id": 2, "label": "gemini-3.1-flash-lite", "kind": "model", "files": ["summarize.py"],
+     "used_for": "", "verdict": ""},
+    {"id": 3, "label": "MongoDB", "kind": "service", "files": ["app.py", "requirements.txt"],
+     "used_for": "", "verdict": ""},
+]
+
+
+def test_purpose_beats_model_family():
+    from notbydefault.pivot import purpose_fix
+    # the model mapped the Gemini summarizer because the prompt names Gemini
+    assert purpose_fix("We're going with Gemini 3.8 Flash for action items.", VIEW, [2]) == [1]
+
+
+def test_purpose_from_a_file_name():
+    from notbydefault.pivot import purpose_fix
+    assert purpose_fix("Replace the model in summarize.py with claude-sonnet-4-5", VIEW, [1]) == [2]
+
+
+def test_no_stated_purpose_keeps_the_models_mapping():
+    from notbydefault.pivot import purpose_fix
+    assert purpose_fix("Drop Gemini, use Claude everywhere", VIEW, [2]) == [2]
+    assert purpose_fix("Switch to Postgres for the notes", VIEW, [3]) == [3]   # nothing matches
+
+
+def test_purpose_keeps_mapped_decisions_of_another_kind():
+    from notbydefault.pivot import purpose_fix
+    assert purpose_fix("Use Claude for action items and drop MongoDB", VIEW, [2, 3]) == [1, 3]
+
+
+def test_confirm_applies_the_purpose_mapping():
+    from notbydefault.pivot import confirm
+
+    class Reply:
+        text = json.dumps({"is_pivot": True, "change": "gemini for action items",
+                           "decision_ids": [2], "conflicts": []})
+        latency_s, cached = 0.1, False
+
+    class Caller:
+        def chat(self, *a, **k):
+            return Reply()
+    view = {"goals": [], "requirements_and_constraints": [], "decisions": VIEW}
+    r = confirm(Caller(), "m", "We're going with Gemini 3.8 Flash for action items.", view)
+    assert r["decision_ids"] == [1] and r["mapped_by_model"] == [2]

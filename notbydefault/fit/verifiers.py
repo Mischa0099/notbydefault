@@ -179,7 +179,30 @@ def verify(caller, verifier_model: str, verifiers: Verifiers, input_text: str, o
     Reference checks (evaluation-only) are skipped without a reference; their failures count
     against the output but are never offered as retry hints, since production has no
     reference answers.
+
+    Every verification is one GUARDRAIL span with nbd.verifier_failed, whether or not the
+    rubric model is called.
     """
+    from notbydefault.fit.tracing import Tracer
+    tracer = getattr(caller, "tracer", None) or Tracer()
+    with tracer.span("notbydefault.verify", "GUARDRAIL", "verification",
+                     attrs={k: v for k, v in (attrs or {}).items()}) as span:
+        result = _verify(caller, verifier_model, verifiers, input_text, output, attrs, reference)
+        span.set(**{"nbd.verifier_failed": not result.passed,
+                    "notbydefault.failed_checks": result.failed,
+                    "notbydefault.rubric_error": result.error or None})
+    return result
+
+
+def _rubric_failed(text: str) -> bool:
+    try:
+        return not bool(parse_json(text).get("pass"))
+    except Exception:
+        return True
+
+
+def _verify(caller, verifier_model: str, verifiers: Verifiers, input_text: str, output: str,
+            attrs: dict | None, reference: dict | None) -> VerifyResult:
     result = VerifyResult(passed=True)
     for check in verifiers.checks:
         if check.needs_reference and reference is None:
@@ -201,7 +224,7 @@ def verify(caller, verifier_model: str, verifiers: Verifiers, input_text: str, o
             {"role": "user", "content": RUBRIC_PROMPT.format(
                 criterion=verifiers.rubric.criterion, input=input_text, output=output)},
         ], span="notbydefault.verifier_call", role="verifier", max_tokens=1024,
-            attrs=attrs or {})
+            attrs=attrs or {}, extra_after=lambda r: {"nbd.verifier_failed": _rubric_failed(r.text)})
         result.cost, result.latency_s = reply.cost, reply.latency_s
         verdict = parse_json(reply.text)
         if not bool(verdict.get("pass")):

@@ -102,66 +102,6 @@
         "sqlalchemy": "valid"
       },
       "notes": "Control: nothing is affected."
-    },
-    {
-      "id": "ho-req-uk",
-      "project": "project_heldout",
-      "requirement": "Invoices and customer data must not leave the United Kingdom.",
-      "expect": {
-        "supabase": "needs_review",
-        "stripe": "needs_review",
-        "anthropic_sdk": "needs_review",
-        "gpt_oss_20b": "stale",
-        "claude_sonnet": [
-          "needs_review",
-          "stale"
-        ],
-        "prisma": "valid"
-      },
-      "notes": "Groq documents US-only storage; Supabase's region is chosen per project; nothing documented for Stripe/Anthropic.",
-      "split": "heldout"
-    },
-    {
-      "id": "ho-req-spend-cap",
-      "project": "project_heldout",
-      "requirement": "Total infrastructure spend is capped at $5 a month.",
-      "expect": {
-        "supabase": [
-          "needs_review",
-          "valid"
-        ],
-        "stripe": [
-          "needs_review",
-          "valid"
-        ],
-        "anthropic_sdk": [
-          "needs_review",
-          "valid"
-        ],
-        "gpt_oss_20b": "stale",
-        "claude_sonnet": [
-          "stale",
-          "needs_review"
-        ],
-        "prisma": "valid"
-      },
-      "notes": "gpt-oss-20b at list price is about $8.25/month at the recorded volume, over $5. Claude Sonnet is far over too, but its price is not in the catalog.",
-      "split": "heldout"
-    },
-    {
-      "id": "ho-req-control",
-      "project": "project_heldout",
-      "requirement": "Every request must be logged with a correlation id.",
-      "expect": {
-        "supabase": "valid",
-        "stripe": "valid",
-        "anthropic_sdk": "valid",
-        "gpt_oss_20b": "valid",
-        "claude_sonnet": "valid",
-        "prisma": "valid"
-      },
-      "notes": "Control: nothing is affected.",
-      "split": "heldout"
     }
   ]
 }

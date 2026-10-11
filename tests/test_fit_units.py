@@ -439,3 +439,43 @@ def test_rejection_reason_says_when_a_pricier_setup_is_clearly_better():
                         S("lite", ALONE, 4.75, 1.0, 0.00011, lo=4.38, hi=5.0)), "big")
     assert v.recommended == ("small", ALONE)
     assert v.rejected["lite/alone"].startswith("higher quality 4.75")
+
+
+def test_a_request_that_never_completes_times_out_on_the_wall_clock(monkeypatch):
+    """urlopen's socket timeout doesn't cover DNS or a trickling server: bound the whole call."""
+    import threading
+    import time
+    import urllib.request
+    from notbydefault import llm
+    from notbydefault.llm import LLMError, OpenAICompatClient
+    release = threading.Event()
+
+    def stuck_urlopen(req, timeout):
+        release.wait(30)              # ignores its socket timeout
+        raise TimeoutError("late")
+    monkeypatch.setattr(urllib.request, "urlopen", stuck_urlopen)
+    monkeypatch.setattr(llm, "REQUEST_SLACK_S", 0.2)
+    c = OpenAICompatClient("groq", "https://x.test", "k", timeout=0.2, sleep=lambda s: None)
+    start = time.monotonic()
+    with pytest.raises(LLMError, match="no complete response"):
+        c.complete("m", [{"role": "user", "content": "x"}])
+    release.set()
+    assert time.monotonic() - start < 5
+
+
+def test_retries_stop_at_the_call_budget(monkeypatch):
+    import urllib.request
+    from notbydefault.llm import LLMError, OpenAICompatClient
+    tries = []
+
+    def failing_urlopen(req, timeout):
+        tries.append(1)
+        raise _http_error(503, "overloaded")
+    monkeypatch.setattr(urllib.request, "urlopen", failing_urlopen)
+    clock = iter(range(0, 1000, 50))
+    monkeypatch.setattr("notbydefault.llm.time.monotonic", lambda: next(clock))
+    c = OpenAICompatClient("groq", "https://x.test", "k", timeout=40, retries=6,
+                           sleep=lambda s: None, call_budget=120)
+    with pytest.raises(LLMError, match="gave up after 120s"):
+        c.complete("m", [{"role": "user", "content": "x"}])
+    assert len(tries) < 6

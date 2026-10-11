@@ -1,0 +1,11 @@
+{
+  "_comment": "Held-out UserPromptSubmit cases against eval/cases/project.json: written before the v3 fixes and never used to tune them. Same format as eval/cases/pivot.json.",
+  "cases": [
+    {"id": "hd-piv-dynamo", "pivot": true, "decisions": ["mongodb"],
+     "prompt": "Can we move the notes over to DynamoDB? Mongo hosting is getting pricey."},
+    {"id": "hd-piv-summaries-model", "pivot": true, "decisions": ["gemini_lite"],
+     "prompt": "For summaries, use gpt-oss-20b rather than the Gemini model."},
+    {"id": "hd-ord-comprehension", "pivot": false,
+     "prompt": "Instead of a for loop, use a list comprehension in the Redis cache warmup."}
+  ]
+}

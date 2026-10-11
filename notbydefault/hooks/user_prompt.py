@@ -139,20 +139,23 @@ def main(argv: list[str]) -> int:
             _log(project_dir, f"pivot-check {info.get('stage')} {ms:.0f}ms "
                               + json.dumps({k: v for k, v in info.items() if k != 'stage'},
                                            default=str))
-            _send_trace(event, info, tracer, project_dir)
+            _send_trace(event, info, tracer, project_dir, interrupted=out is not None, hook_ms=ms)
     except Exception:
         import traceback
         _log(project_dir, "pivot-check error (prompt passed through):\n" + traceback.format_exc())
     return 0
 
 
-def _send_trace(event: dict, info: dict, tracer, project_dir: Path) -> None:
+def _send_trace(event: dict, info: dict, tracer, project_dir: Path, interrupted: bool = False,
+                hook_ms: float | None = None) -> None:
     import os
     if os.environ.get("NOTBYDEFAULT_TELEMETRY") == "0":
         return
     try:
         _spawn_telemetry({"kind": "trace", "name": "notbydefault.pivot_check",
                           "session_id": event.get("session_id"), "info": info,
+                          "nbd": {"nbd.interrupted": interrupted,
+                                  "nbd.hook_ms": None if hook_ms is None else round(hook_ms, 1)},
                           "journal": tracer.journal}, project_dir)
     except Exception as e:
         _log(project_dir, f"telemetry spawn failed: {e!r}")

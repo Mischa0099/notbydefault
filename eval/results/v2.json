@@ -1,5 +1,6 @@
 {
   "version": "v2",
+  "cases": "original",
   "sections": {
     "detection": {
       "cases": [
@@ -14,7 +15,7 @@
             "MongoDB"
           ],
           "asked": true,
-          "ms": 33.5
+          "ms": 46.1
         },
         {
           "case": "det-npm-supabase",
@@ -27,7 +28,7 @@
             "Supabase"
           ],
           "asked": true,
-          "ms": 25.1
+          "ms": 23.6
         },
         {
           "case": "det-pnpm-orm-and-db",
@@ -42,7 +43,7 @@
             "PostgreSQL"
           ],
           "asked": true,
-          "ms": 31.0
+          "ms": 33.2
         },
         {
           "case": "det-poetry-extras",
@@ -55,7 +56,7 @@
             "PostgreSQL"
           ],
           "asked": true,
-          "ms": 23.7
+          "ms": 27.6
         },
         {
           "case": "det-ps-ai-provider",
@@ -68,7 +69,7 @@
             "Groq"
           ],
           "asked": true,
-          "ms": 19.3
+          "ms": 22.0
         },
         {
           "case": "det-uv-anthropic",
@@ -81,7 +82,7 @@
             "Anthropic"
           ],
           "asked": true,
-          "ms": 27.8
+          "ms": 29.9
         },
         {
           "case": "det-mixed-install",
@@ -94,7 +95,7 @@
             "OpenAI"
           ],
           "asked": true,
-          "ms": 22.1
+          "ms": 27.9
         },
         {
           "case": "det-manifest-edit",
@@ -107,7 +108,7 @@
             "Google Gemini"
           ],
           "asked": true,
-          "ms": 33.5
+          "ms": 34.3
         },
         {
           "case": "det-package-json-write",
@@ -120,7 +121,7 @@
             "MongoDB"
           ],
           "asked": true,
-          "ms": 31.0
+          "ms": 36.2
         },
         {
           "case": "det-hardcoded-model-py",
@@ -133,7 +134,7 @@
             "claude-sonnet-4-5"
           ],
           "asked": true,
-          "ms": 40.7
+          "ms": 24.6
         },
         {
           "case": "det-model-swap-edit",
@@ -146,7 +147,7 @@
             "gpt-4o-mini"
           ],
           "asked": true,
-          "ms": 26.5
+          "ms": 47.1
         },
         {
           "case": "det-hardcoded-model-js",
@@ -159,33 +160,31 @@
             "gpt-4.1"
           ],
           "asked": true,
-          "ms": 24.7
+          "ms": 24.1
         },
         {
           "case": "det-env-model",
           "split": "original",
-          "ok": true,
+          "ok": false,
           "expected": [
             "gpt-4o-mini"
           ],
-          "flagged": [
-            "gpt-4o-mini"
-          ],
-          "asked": true,
-          "ms": 24.9
+          "flagged": [],
+          "asked": false,
+          "ms": 0.5,
+          "reason": "missed: expected ['gpt-4o-mini'], the hook stayed silent"
         },
         {
           "case": "det-yaml-model",
           "split": "original",
-          "ok": true,
+          "ok": false,
           "expected": [
             "gemini-2.5-flash"
           ],
-          "flagged": [
-            "gemini-2.5-flash"
-          ],
-          "asked": true,
-          "ms": 21.6
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4,
+          "reason": "missed: expected ['gemini-2.5-flash'], the hook stayed silent"
         },
         {
           "case": "det-shell-append-manifest",
@@ -242,7 +241,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 1.4
+          "ms": 1.7
         },
         {
           "case": "neg-edit-near-existing-model",
@@ -251,7 +250,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 1.3
+          "ms": 1.8
         },
         {
           "case": "neg-pip-test-lib",
@@ -260,7 +259,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 0.4
+          "ms": 0.5
         },
         {
           "case": "neg-npm-dev-test-lib",
@@ -296,7 +295,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 0.5
+          "ms": 0.4
         },
         {
           "case": "neg-run-tests",
@@ -305,7 +304,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 0.4
+          "ms": 0.5
         },
         {
           "case": "neg-git-commit",
@@ -314,7 +313,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 0.3
+          "ms": 0.5
         },
         {
           "case": "neg-test-file-existing-model",
@@ -323,7 +322,7 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 39.3
+          "ms": 18.6
         },
         {
           "case": "neg-reinstall-accepted",
@@ -332,82 +331,39 @@
           "expected": [],
           "flagged": [],
           "asked": false,
-          "ms": 5.9
-        },
-        {
-          "case": "ho-det-ini-model",
-          "split": "heldout",
-          "ok": true,
-          "expected": [
-            "mistral-large-latest"
-          ],
-          "flagged": [
-            "mistral-large-latest"
-          ],
-          "asked": true,
-          "ms": 29.1
-        },
-        {
-          "case": "ho-det-bun-clerk",
-          "split": "heldout",
-          "ok": true,
-          "expected": [
-            "Clerk"
-          ],
-          "flagged": [
-            "Clerk"
-          ],
-          "asked": true,
-          "ms": 25.7
-        },
-        {
-          "case": "ho-neg-docs-mention",
-          "split": "heldout",
-          "ok": false,
-          "expected": [],
-          "flagged": [
-            "gpt-4o",
-            "claude-sonnet-4-5"
-          ],
-          "asked": true,
-          "ms": 34.6,
-          "reason": "false interruption: flagged ['claude-sonnet-4-5', 'gpt-4o'] on docs comparing models, no choice made"
+          "ms": 5.6
         }
       ],
       "failures": [
         {
+          "case": "det-env-model",
+          "split": "original",
+          "reason": "missed: expected ['gpt-4o-mini'], the hook stayed silent"
+        },
+        {
+          "case": "det-yaml-model",
+          "split": "original",
+          "reason": "missed: expected ['gemini-2.5-flash'], the hook stayed silent"
+        },
+        {
           "case": "det-shell-append-manifest",
           "split": "original",
           "reason": "missed: expected ['OpenAI'], the hook stayed silent"
-        },
-        {
-          "case": "ho-neg-docs-mention",
-          "split": "heldout",
-          "reason": "false interruption: flagged ['claude-sonnet-4-5', 'gpt-4o'] on docs comparing models, no choice made"
         }
       ],
       "metrics": {
         "cases": 30,
-        "passed": 29,
+        "passed": 27,
         "precision": 1.0,
-        "recall": 0.938,
-        "interruptions": 14,
+        "recall": 0.812,
+        "interruptions": 12,
         "false_interruptions": 0,
         "false_interruption_rate": 0.0,
         "negatives": 15
       },
-      "heldout_metrics": {
-        "cases": 3,
-        "passed": 2,
-        "precision": 0.5,
-        "recall": 1.0,
-        "interruptions": 3,
-        "false_interruptions": 1,
-        "false_interruption_rate": 1.0,
-        "negatives": 1
-      },
-      "trace_id": "9aca23456b6477fb71945176dd8d2b4f",
-      "seconds": 0.7
+      "heldout_metrics": null,
+      "trace_id": "aadbb047d390e103c287800b2884c5df",
+      "seconds": 0.5
     },
     "pivot": {
       "cases": [
@@ -422,14 +378,14 @@
             "Actually",
             "let's switch"
           ],
-          "change": "Switch database from MongoDB to Postgres",
+          "change": "Switch from MongoDB to Postgres",
           "mapped": [
             "mongodb"
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 1133.9
+          "llm_calls_cached": 1,
+          "ms": 110.1
         },
         {
           "case": "piv-provider-drop",
@@ -447,8 +403,8 @@
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 680.9
+          "llm_calls_cached": 1,
+          "ms": 18.6
         },
         {
           "case": "piv-model-upgrade",
@@ -461,14 +417,14 @@
             "What if we",
             "instead"
           ],
-          "change": "Use gpt-4o for action items",
+          "change": "Use gpt-4o for action items instead of openai/gpt-oss-120b",
           "mapped": [
             "gpt_oss_120b"
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 1277.1
+          "llm_calls_cached": 1,
+          "ms": 898.1
         },
         {
           "case": "piv-summarizer-model",
@@ -480,14 +436,15 @@
           "phrases": [
             "replace"
           ],
-          "change": "Replace gemini-3.1-flash-lite with claude-sonnet-4-5",
+          "change": "Replace gemini-3.1-flash-lite with claude-sonnet-4-5 in summarize.py",
           "mapped": [
-            "gemini_lite"
+            "gemini_lite",
+            "openai_sdk"
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 815.6
+          "llm_calls_cached": 1,
+          "ms": 53.9
         },
         {
           "case": "piv-cache-removal",
@@ -499,32 +456,30 @@
           "phrases": [
             "Get rid of"
           ],
-          "change": "Remove Redis service",
+          "change": "Remove Redis decision",
           "mapped": [
             "redis"
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 56650.8
+          "llm_calls_cached": 1,
+          "ms": 28.3
         },
         {
           "case": "piv-goal-change",
           "split": "original",
-          "ok": true,
+          "ok": false,
           "expected_pivot": true,
-          "said_pivot": true,
-          "stage": "confirmed",
-          "phrases": [
-            "Forget the",
-            "plan: mvp, timeline"
-          ],
-          "change": "Goal changed from 2\u2011week MVP to full enterprise platform",
+          "said_pivot": false,
+          "stage": "prefilter",
+          "phrases": [],
+          "change": null,
           "mapped": [],
-          "mapping_ok": true,
-          "llm_calls": 1,
+          "mapping_ok": null,
+          "llm_calls": 0,
           "llm_calls_cached": 0,
-          "ms": 1277.0
+          "ms": 8.3,
+          "reason": "missed pivot: the pre-filter matched \"Forget the\" but found no stack word, decision name or recorded goal, so it skipped the LLM"
         },
         {
           "case": "piv-no-trigger-db",
@@ -543,27 +498,28 @@
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 1090.4
+          "llm_calls_cached": 1,
+          "ms": 37.1
         },
         {
           "case": "piv-no-trigger-provider",
           "split": "original",
-          "ok": true,
+          "ok": false,
           "expected_pivot": true,
           "said_pivot": true,
           "stage": "confirmed",
           "phrases": [
             "going with"
           ],
-          "change": "Switch from openai/gpt-oss-120b to Gemini 3.8 Flash for action items",
+          "change": "Switch from gemini-3.1-flash-lite to gemini-3.8-flash",
           "mapped": [
-            "gpt_oss_120b"
+            "gemini_lite"
           ],
-          "mapping_ok": true,
+          "mapping_ok": false,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 1092.3
+          "llm_calls_cached": 1,
+          "ms": 39.3,
+          "reason": "pivot found but not mapped to ['gpt_oss_120b'] (mapped to ['gemini_lite'])"
         },
         {
           "case": "piv-self-host",
@@ -575,14 +531,14 @@
           "phrases": [
             "Let's move"
           ],
-          "change": "Switch from Groq-hosted openai/gpt-oss-120b to self-hosted GPU model",
+          "change": "Switch from Groq-hosted openai/gpt-oss-120b to self-hosted model on GPU",
           "mapped": [
             "gpt_oss_120b"
           ],
           "mapping_ok": true,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 56811.6
+          "llm_calls_cached": 1,
+          "ms": 24.6
         },
         {
           "case": "ord-actually-bug",
@@ -598,8 +554,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 714.9
+          "llm_calls_cached": 1,
+          "ms": 16.3
         },
         {
           "case": "ord-instead-404",
@@ -615,8 +571,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 1197.2
+          "llm_calls_cached": 1,
+          "ms": 12.6
         },
         {
           "case": "ord-instead-dict",
@@ -628,12 +584,12 @@
           "phrases": [
             "instead"
           ],
-          "change": "use dict instead of list for parsed model output",
+          "change": "",
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 786.0
+          "llm_calls_cached": 1,
+          "ms": 28.0
         },
         {
           "case": "ord-replace-prints",
@@ -645,12 +601,12 @@
           "phrases": [
             "Replace"
           ],
-          "change": "Replace print statements with logging",
+          "change": "",
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 811600.6
+          "llm_calls_cached": 1,
+          "ms": 28.6
         },
         {
           "case": "ord-drop-import",
@@ -662,12 +618,12 @@
           "phrases": [
             "Drop"
           ],
-          "change": "",
+          "change": "Remove unused redis import from reports.py",
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 729.8
+          "llm_calls_cached": 1,
+          "ms": 22.4
         },
         {
           "case": "ord-switch-env",
@@ -684,8 +640,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 934.6
+          "llm_calls_cached": 1,
+          "ms": 16.3
         },
         {
           "case": "ord-actually-timeout",
@@ -701,8 +657,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 626.1
+          "llm_calls_cached": 1,
+          "ms": 15.9
         },
         {
           "case": "ord-rather-than",
@@ -718,8 +674,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 57249.5
+          "llm_calls_cached": 1,
+          "ms": 10.2
         },
         {
           "case": "ord-migrate-schema",
@@ -734,7 +690,7 @@
           "mapping_ok": null,
           "llm_calls": 0,
           "llm_calls_cached": 0,
-          "ms": 18.2
+          "ms": 2.2
         },
         {
           "case": "ord-cache-key",
@@ -746,12 +702,12 @@
           "phrases": [
             "Actually"
           ],
-          "change": "include user id in Redis cache key",
+          "change": "",
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 827.4
+          "llm_calls_cached": 1,
+          "ms": 7.5
         },
         {
           "case": "ord-let-us-use-fixture",
@@ -768,8 +724,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 752.1
+          "llm_calls_cached": 1,
+          "ms": 6.7
         },
         {
           "case": "ord-explain-model",
@@ -785,8 +741,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 1016.9
+          "llm_calls_cached": 1,
+          "ms": 22.6
         },
         {
           "case": "ord-move-config",
@@ -798,12 +754,12 @@
           "phrases": [
             "instead"
           ],
-          "change": "",
+          "change": "Move the model name to a constant at the top of actions.py instead of inline.",
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 57345.7
+          "llm_calls_cached": 1,
+          "ms": 22.9
         },
         {
           "case": "ord-retry",
@@ -819,8 +775,8 @@
           "mapped": [],
           "mapping_ok": null,
           "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 695.1
+          "llm_calls_cached": 1,
+          "ms": 24.6
         },
         {
           "case": "ord-plain",
@@ -835,7 +791,7 @@
           "mapping_ok": null,
           "llm_calls": 0,
           "llm_calls_cached": 0,
-          "ms": 5.0
+          "ms": 7.3
         },
         {
           "case": "ord-actually-tests",
@@ -850,95 +806,564 @@
           "mapping_ok": null,
           "llm_calls": 0,
           "llm_calls_cached": 0,
-          "ms": 5.1
-        },
-        {
-          "case": "ho-piv-ditch-groq",
-          "split": "heldout",
-          "ok": true,
-          "expected_pivot": true,
-          "said_pivot": true,
-          "stage": "confirmed",
-          "phrases": [
-            "ditch"
-          ],
-          "change": "Switch from Groq to OpenRouter for model hosting",
-          "mapped": [
-            "gpt_oss_120b"
-          ],
-          "mapping_ok": true,
-          "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 903.2
-        },
-        {
-          "case": "ho-piv-deadline",
-          "split": "heldout",
-          "ok": true,
-          "expected_pivot": true,
-          "said_pivot": true,
-          "stage": "confirmed",
-          "phrases": [
-            "instead",
-            "Change of plans",
-            "plan: timeline"
-          ],
-          "change": "shorten project deadline to 5 days",
-          "mapped": [],
-          "mapping_ok": true,
-          "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 957.9
-        },
-        {
-          "case": "ho-ord-rename",
-          "split": "heldout",
-          "ok": true,
-          "expected_pivot": false,
-          "said_pivot": false,
-          "stage": "not_pivot",
-          "phrases": [
-            "Actually"
-          ],
-          "change": "",
-          "mapped": [],
-          "mapping_ok": null,
-          "llm_calls": 1,
-          "llm_calls_cached": 0,
-          "ms": 57128.6
+          "ms": 5.0
         }
       ],
-      "failures": [],
+      "failures": [
+        {
+          "case": "piv-goal-change",
+          "split": "original",
+          "reason": "missed pivot: the pre-filter matched \"Forget the\" but found no stack word, decision name or recorded goal, so it skipped the LLM",
+          "prompt": "Forget the 2-week MVP, we're building this as a full enterprise platform now."
+        },
+        {
+          "case": "piv-no-trigger-provider",
+          "split": "original",
+          "reason": "pivot found but not mapped to ['gpt_oss_120b'] (mapped to ['gemini_lite'])",
+          "prompt": "We're going with Gemini 3.8 Flash for action items."
+        }
+      ],
       "metrics": {
         "cases": 25,
-        "passed": 25,
+        "passed": 23,
         "precision": 1.0,
-        "recall": 1.0,
+        "recall": 0.889,
         "false_pivots": 0,
-        "missed_pivots": 0,
+        "missed_pivots": 1,
         "llm_calls_per_ordinary_prompt": 0.812,
         "ordinary_prompts_reaching_llm": "13/16",
-        "mapping_accuracy": 1.0,
-        "llm_calls": 22,
-        "llm_calls_cached": 0
+        "mapping_accuracy": 0.875,
+        "llm_calls": 21,
+        "llm_calls_cached": 21
       },
-      "heldout_metrics": {
-        "cases": 3,
-        "passed": 3,
-        "precision": 1.0,
-        "recall": 1.0,
-        "false_pivots": 0,
-        "missed_pivots": 0,
-        "llm_calls_per_ordinary_prompt": 1.0,
-        "ordinary_prompts_reaching_llm": "1/1",
-        "mapping_accuracy": 1.0,
-        "llm_calls": 3,
-        "llm_calls_cached": 0
+      "heldout_metrics": null,
+      "trace_id": "aa05a4602baacb8954fb40cc8274c4fe",
+      "seconds": 2.5
+    },
+    "requirements": {
+      "cases": [
+        {
+          "case": "req-eu-residency",
+          "split": "original",
+          "ok": true,
+          "requirement": "All user data must stay in the EU (GDPR data residency).",
+          "constraints": {
+            "data_residency": "EU"
+          },
+          "decisions": {
+            "mongodb": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "MongoDB: where its data lives depends on how it is deployed (self-hosted anywhere, or MongoDB Atlas with the cloud region chosen per cluster); confirm it runs in EU",
+              "basis": "depends on deployment",
+              "property": ""
+            },
+            "redis": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Redis: where its data lives depends on how it is deployed (self-hosted, or a managed provider whose region is chosen per instance); confirm it runs in EU",
+              "basis": "depends on deployment",
+              "property": ""
+            },
+            "openai_sdk": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "OpenAI service may process user data outside the EU, conflicting with the EU\u2011only data residency requirement",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_120b": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "groq:openai/gpt-oss-120b runs on groq, which documents data residency: US (source: https://console.groq.com/docs/your-data (read 2026-10-11)); EU residency is required",
+              "basis": "provider documentation",
+              "property": ""
+            },
+            "gemini_lite": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "gemini:gemini-3.1-flash-lite runs on gemini, which documents data residency: no region guaranteed (source: https://ai.google.dev/gemini-api/terms (read 2026-10-11)); EU residency is required",
+              "basis": "provider documentation",
+              "property": ""
+            },
+            "sqlalchemy": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "SQLAlchemy is a location\u2011agnostic ORM; it can connect to databases hosted in the EU, so the decision itself does not conflict with the data\u2011residency requirement.",
+              "basis": "",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 7
+        },
+        {
+          "case": "req-us-residency",
+          "split": "original",
+          "ok": true,
+          "requirement": "Customer data must stay in the United States.",
+          "constraints": {
+            "data_residency": "US"
+          },
+          "decisions": {
+            "mongodb": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "MongoDB: where its data lives depends on how it is deployed (self-hosted anywhere, or MongoDB Atlas with the cloud region chosen per cluster); confirm it runs in US",
+              "basis": "depends on deployment",
+              "property": ""
+            },
+            "redis": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Redis: where its data lives depends on how it is deployed (self-hosted, or a managed provider whose region is chosen per instance); confirm it runs in US",
+              "basis": "depends on deployment",
+              "property": ""
+            },
+            "openai_sdk": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "OpenAI's data processing location is not guaranteed to remain within the US, so the decision must be re\u2011evaluated for compliance with the US\u2011only data residency requirement.",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_120b": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Groq's openai/gpt-oss-120b already has documented US data residency, satisfying the new US\u2011only data requirement.",
+              "basis": "",
+              "property": ""
+            },
+            "gemini_lite": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "gemini:gemini-3.1-flash-lite runs on gemini, which documents data residency: no region guaranteed (source: https://ai.google.dev/gemini-api/terms (read 2026-10-11)); US residency is required",
+              "basis": "provider documentation",
+              "property": ""
+            },
+            "sqlalchemy": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "SQLAlchemy is an ORM; data residency is a deployment concern, not impacted by the ORM choice",
+              "basis": "",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 7
+        },
+        {
+          "case": "req-hipaa",
+          "split": "original",
+          "ok": false,
+          "requirement": "We will store patient health records, so the whole system must be HIPAA compliant.",
+          "constraints": {},
+          "decisions": {
+            "mongodb": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "MongoDB usage must be re\u2011evaluated to ensure required HIPAA safeguards (BAA, encryption, audit logging) are in place",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "redis": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Redis default configurations lack required HIPAA safeguards (encryption, audit, access controls) for storing patient health records",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "openai_sdk": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Using OpenAI may not meet HIPAA requirements without a BAA, so the decision must be re\u2011evaluated for compliance",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_120b": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Groq\u2019s hosting of openai/gpt-oss-120b lacks verified HIPAA compliance/BAA, so the model choice must be re\u2011evaluated for patient health records",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gemini_lite": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Gemini model lacks guaranteed HIPAA compliance and data residency, so using it for patient health records must be re\u2011evaluated",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "sqlalchemy": {
+              "expected": [
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": false,
+              "reason": "SQLAlchemy usage must be reviewed to ensure it supports HIPAA\u2011required encryption, access controls and audit logging",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 7
+        },
+        {
+          "case": "req-budget-cut",
+          "split": "original",
+          "ok": false,
+          "requirement": "The monthly infrastructure budget is cut to $50.",
+          "constraints": {
+            "max_monthly_cost_usd": 50
+          },
+          "decisions": {
+            "mongodb": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "MongoDB service cost unknown; may exceed $50 budget",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "redis": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Redis service may exceed the new $50 monthly budget, requiring cost re\u2011evaluation",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "openai_sdk": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "The OpenAI service likely costs more than the new $50 monthly budget, so the decision must be re\u2011evaluated.",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_120b": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "Cost check: groq:openai/gpt-oss-120b at list price ($0.15/M input, $0.60/M output; https://console.groq.com/docs/models, 2026-10-10) x 600,000 calls/month x 1000 in + 300 out tokens (assumed 1000 input + 300 output tokens per call (no fit test measured yet)) = about $198/month vs a $50/month budget (OVER BUDGET).",
+              "basis": "list price x recorded volume",
+              "property": ""
+            },
+            "gemini_lite": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "Cost check: gemini:gemini-3.1-flash-lite at list price ($0.25/M input, $1.50/M output; https://ai.google.dev/gemini-api/docs/pricing, 2026-10-10) x 600,000 calls/month x 1000 in + 300 out tokens (assumed 1000 input + 300 output tokens per call (no fit test measured yet)) = about $420/month vs a $50/month budget (OVER BUDGET).",
+              "basis": "list price x recorded volume",
+              "property": ""
+            },
+            "sqlalchemy": {
+              "expected": [
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": false,
+              "reason": "SQLAlchemy implies a database service that may exceed the $50 monthly budget",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 7
+        },
+        {
+          "case": "req-10x-users",
+          "split": "original",
+          "ok": false,
+          "requirement": "Plan for 10x the users: 200,000 users at launch.",
+          "constraints": {
+            "expected_users": 200000
+          },
+          "decisions": {
+            "mongodb": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "200k users may exceed default MongoDB capacity and require scaling/sharding assessment",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "redis": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "200k users may exceed a single Redis instance\u2019s capacity, requiring re\u2011evaluation of sizing, clustering, or persistence strategy",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "openai_sdk": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Scaling to 200,000 users may exceed OpenAI usage, cost, and rate\u2011limit assumptions, so the provider choice must be re\u2011evaluated.",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_120b": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "Cost check: groq:openai/gpt-oss-120b at list price ($0.15/M input, $0.60/M output; https://console.groq.com/docs/models, 2026-10-10) x 6,000,000 calls/month x 1000 in + 300 out tokens (assumed 1000 input + 300 output tokens per call (no fit test measured yet)) = about $1,980/month vs a $500/month budget (OVER BUDGET).",
+              "basis": "list price x recorded volume",
+              "property": ""
+            },
+            "gemini_lite": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "Cost check: gemini:gemini-3.1-flash-lite at list price ($0.25/M input, $1.50/M output; https://ai.google.dev/gemini-api/docs/pricing, 2026-10-10) x 6,000,000 calls/month x 1000 in + 300 out tokens (assumed 1000 input + 300 output tokens per call (no fit test measured yet)) = about $4,200/month vs a $500/month budget (OVER BUDGET).",
+              "basis": "list price x recorded volume",
+              "property": ""
+            },
+            "sqlalchemy": {
+              "expected": [
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": false,
+              "reason": "Scaling to 200k users may stress ORM performance and connection handling, so the choice of SQLAlchemy should be re\u2011evaluated for high\u2011load suitability",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 7
+        },
+        {
+          "case": "req-unrelated",
+          "split": "original",
+          "ok": false,
+          "requirement": "All API responses must be JSON with snake_case keys.",
+          "constraints": {},
+          "decisions": {
+            "mongodb": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "MongoDB as a storage layer doesn't constrain API response formatting, so it doesn't impact the snake_case JSON response requirement.",
+              "basis": "",
+              "property": ""
+            },
+            "redis": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Redis is a data store unrelated to API response formatting",
+              "basis": "",
+              "property": ""
+            },
+            "openai_sdk": {
+              "expected": [
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": false,
+              "reason": "OpenAI's response format may not meet the snake_case JSON requirement, so its usage must be re\u2011evaluated",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_120b": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "The new snake_case JSON response requirement pertains to API output formatting, not the choice of the Groq openai/gpt-oss-120b model used for action items.",
+              "basis": "",
+              "property": ""
+            },
+            "gemini_lite": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "The new snake_case JSON response requirement pertains to API output formatting, not the choice of the Gemini model used for summarization.",
+              "basis": "",
+              "property": ""
+            },
+            "sqlalchemy": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "SQLAlchemy is an ORM for data access and does not dictate API response formatting, so the snake_case JSON requirement does not impact this decision.",
+              "basis": "",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 7
+        }
+      ],
+      "failures": [
+        {
+          "case": "req-hipaa",
+          "split": "original",
+          "decision": "sqlalchemy",
+          "reason": "expected valid, got needs_review (model judgement (nothing documented)): SQLAlchemy usage must be reviewed to ensure it supports HIPAA\u2011required encryption, access controls and audit logging"
+        },
+        {
+          "case": "req-budget-cut",
+          "split": "original",
+          "decision": "sqlalchemy",
+          "reason": "expected valid, got needs_review (model judgement (nothing documented)): SQLAlchemy implies a database service that may exceed the $50 monthly budget"
+        },
+        {
+          "case": "req-10x-users",
+          "split": "original",
+          "decision": "sqlalchemy",
+          "reason": "expected valid, got needs_review (model judgement (nothing documented)): Scaling to 200k users may stress ORM performance and connection handling, so the choice of SQLAlchemy should be re\u2011evaluated for high\u2011load suitability"
+        },
+        {
+          "case": "req-unrelated",
+          "split": "original",
+          "decision": "openai_sdk",
+          "reason": "expected valid, got needs_review (model judgement (nothing documented)): OpenAI's response format may not meet the snake_case JSON requirement, so its usage must be re\u2011evaluated"
+        }
+      ],
+      "metrics": {
+        "cases": 6,
+        "passed": 2,
+        "accuracy": 0.889,
+        "decisions_right": "32/36",
+        "false_stale": 0,
+        "missed_stale": 0,
+        "llm_calls": 42,
+        "llm_calls_cached": 42
       },
-      "trace_id": "884a310de3937e70fbabbac5d6ed9d6a",
-      "seconds": 1115.4
+      "heldout_metrics": null,
+      "trace_id": "ba7ced42916c42ba8485d01b6fadc956",
+      "seconds": 3.5
+    },
+    "fit": {
+      "cases": [
+        {
+          "case": "fit-21-action-items",
+          "split": "original",
+          "decision_id": 21,
+          "status": "pending",
+          "reason": "the fit check stopped early at gemini:gemini-3.8-flash's daily free-tier limit, so the final judged run has not happened",
+          "stopped_model": "gemini:gemini-3.8-flash",
+          "judge": "gemini:gemini-3.8-flash",
+          "provisional_verdict": "switch",
+          "provisional_summary": "Cheapest setup that meets the bar: gemini:gemini-3.1-flash-lite, correct on 11/12 cases, 8/8 hard, verifier pass rate 100% [100%-100%], $0.000280/call, $335.48/month. Best quality within the budget: none; no setup fits $25.00/month at this volume.",
+          "journal": ".notbydefault/journal/21-20261010T180513Z-daily_limit.json",
+          "check_trace_id": "ec3345615ccc81fbde3d42df85165f6c",
+          "decision_status": "unreviewed",
+          "ok": false,
+          "needs": "the Gemini judge (gemini:gemini-3.8-flash); its free quota resets at midnight Pacific (12:30 IST)",
+          "resume": "python -m notbydefault check 21 --project demo-app"
+        }
+      ],
+      "failures": [
+        {
+          "case": "fit-21-action-items",
+          "split": "original",
+          "pending": true,
+          "reason": "pending: the fit check stopped early at gemini:gemini-3.8-flash's daily free-tier limit, so the final judged run has not happened. Needs the Gemini judge (gemini:gemini-3.8-flash); its free quota resets at midnight Pacific (12:30 IST). Then run `python -m notbydefault check 21 --project demo-app` and `notbydefault eval --sections fit`."
+        }
+      ],
+      "metrics": {
+        "cases": 1,
+        "passed": 0,
+        "final": 0,
+        "pending": 1
+      },
+      "heldout_metrics": null,
+      "trace_id": "dfd523432026f9704d460d0cb1601caa",
+      "seconds": 0.0
     }
   },
-  "run_at": "2026-10-11T03:48:01+00:00",
-  "commit": "4efa11d"
+  "run_at": "2026-10-11T04:12:32+00:00",
+  "commit": "64580da"
 }

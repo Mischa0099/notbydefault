@@ -197,8 +197,81 @@ not pivots.
 Return JSON:
 {{"is_pivot": true or false,
   "change": "<one line: what the developer wants to change, or empty>",
-  "decision_ids": [<ids of decisions above this would invalidate>],
+  "decision_ids": [<ids of the decisions this would invalidate: the ones whose PURPOSE (used_for,
+                    verdict, files) matches what the message says the change is for, e.g. "for
+                    action items"; not every decision of the same provider or model family>],
   "conflicts": [{{"node_id": <id of a goal/requirement/constraint above>, "why": "<one line>"}}]}}"""
+
+
+# --- purpose: which decision a pivot is about ------------------------------------------
+
+PURPOSE_RX = re.compile(
+    r"\bfor (?:the |our |all |its |my )?(?P<what>[a-z][\w\- ]{2,40}?)"
+    r"(?=\s*(?:[,.;:!?)]|$|\b(?:instead|rather|now|from|too|as well|please)\b))"
+    r"|\bin (?P<file>[\w./\\-]+\.\w{1,5})\b", re.IGNORECASE)
+PURPOSE_STOP = {"the", "and", "our", "all", "use", "with", "now", "from", "this", "that",
+                "py", "ts", "js", "tsx", "jsx", "src", "app", "lib", "main", "index"}
+
+
+def _words(text: str) -> set[str]:
+    out = set()
+    for w in re.findall(r"[a-z][a-z0-9]+", (text or "").lower()):
+        if len(w) < 3 or w in PURPOSE_STOP:
+            continue
+        for suffix, repl in (("ies", "y"), ("es", ""), ("s", "")):
+            if w.endswith(suffix) and len(w) - len(suffix) >= 4:
+                w = w[:-len(suffix)] + repl
+                break
+        out.add(w)
+    return out
+
+
+def _same_word(a: str, b: str) -> bool:
+    if a == b:
+        return True
+    n = min(len(a), len(b))
+    return n >= 5 and a[:5] == b[:5] and (a.startswith(b) or b.startswith(a) or a[:6] == b[:6])
+
+
+def stated_purpose(prompt: str) -> set[str]:
+    """Words of what the message says the change is for ("for action items", "in actions.py")."""
+    words = set()
+    for m in PURPOSE_RX.finditer(prompt or ""):
+        what = m.group("what") or _stem(m.group("file") or "")
+        words |= _words(what)
+    return words
+
+
+def _stem(path: str) -> str:
+    return re.split(r"[\\/]", path)[-1].rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
+
+
+def decision_purpose(d: dict) -> set[str]:
+    """What a decision is used for: its call-site task, fit verdict and the files it touches
+    (not its provider or model name)."""
+    from notbydefault.detect import is_manifest
+    files = " ".join(_stem(f) for f in d.get("files") or [] if not is_manifest(f))
+    return _words(" ".join([d.get("used_for") or "", d.get("verdict") or "", files])) - \
+        _words(d.get("label") or "")
+
+
+def purpose_fix(prompt: str, decisions: list[dict], mapped: list[int]) -> list[int]:
+    """Map a pivot onto the decision whose purpose matches what the message says the change is
+    for. When exactly one decision matches, it replaces mapped decisions of the same kind that
+    don't (e.g. the summarizer model picked only because it is also a Gemini model), and is
+    added when nothing was mapped. Otherwise the model's mapping stands."""
+    said = stated_purpose(prompt)
+    if not said:
+        return mapped
+    matches = [d for d in decisions
+               if any(_same_word(a, b) for a in said for b in decision_purpose(d))]
+    if len(matches) != 1:
+        return mapped
+    hit = matches[0]
+    kept = [i for i in mapped
+            if i == hit["id"] or next((d for d in decisions if d["id"] == i), {}).get("kind")
+            != hit.get("kind")]
+    return kept if hit["id"] in kept else [hit["id"], *kept]
 
 
 def confirm(caller, model: str, prompt: str, graph_view: dict, prices: str = "none") -> dict:
@@ -217,11 +290,15 @@ def confirm(caller, model: str, prompt: str, graph_view: dict, prices: str = "no
     ids = {n["id"] for k in ("goals", "requirements_and_constraints", "decisions")
            for n in graph_view[k]}
     decision_ids = {d["id"] for d in graph_view["decisions"]}
+    mapped = [int(str(i).lstrip("#")) for i in data.get("decision_ids") or []
+              if str(i).lstrip("#").isdigit() and int(str(i).lstrip("#")) in decision_ids]
+    is_pivot = bool(data.get("is_pivot"))
+    by_purpose = purpose_fix(prompt, graph_view["decisions"], mapped) if is_pivot else mapped
     return {
-        "is_pivot": bool(data.get("is_pivot")),
+        "is_pivot": is_pivot,
         "change": str(data.get("change") or "").strip(),
-        "decision_ids": [int(i) for i in data.get("decision_ids") or []
-                         if str(i).lstrip("#").isdigit() and int(str(i).lstrip("#")) in decision_ids],
+        "decision_ids": by_purpose,
+        "mapped_by_model": mapped,
         "conflicts": [{"node_id": int(str(c.get("node_id")).lstrip("#")), "why": str(c.get("why", ""))}
                       for c in data.get("conflicts") or []
                       if str(c.get("node_id", "")).lstrip("#").isdigit()

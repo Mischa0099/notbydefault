@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -10,6 +11,8 @@ from dataclasses import dataclass, field
 
 MAX_INLINE_WAIT_S = 90   # a 429 asking us to wait longer than this is treated as a daily limit
 MAX_TIMEOUT_RETRIES = 1  # timeouts are retried once (a model that hangs twice is reported)
+CALL_BUDGET_FACTOR = 3   # a whole call (all retries) gets at most this many request timeouts
+REQUEST_SLACK_S = 5      # beyond the socket timeout, before a request counts as stuck
 
 
 class LLMError(RuntimeError):
@@ -114,11 +117,12 @@ class OpenAICompatClient:
 
     def __init__(self, provider: str, base_url: str, api_key: str, timeout: float = 120.0,
                  retries: int = 6, extra_headers: dict | None = None, sleep=time.sleep,
-                 on_event=None):
+                 on_event=None, call_budget: float | None = None):
         self.provider = provider
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
-        self.timeout = timeout
+        self.timeout = timeout          # wall-clock limit for one request
+        self.call_budget = call_budget or timeout * CALL_BUDGET_FACTOR   # all retries
         self.retries = retries
         self.extra_headers = extra_headers or {}
         self.sleep = sleep
@@ -137,12 +141,16 @@ class OpenAICompatClient:
         data = json.dumps(body).encode()
         last: Exception | None = None
         timeouts = 0
+        give_up_at = time.monotonic() + self.call_budget
         for attempt in range(self.retries):
+            if attempt and time.monotonic() >= give_up_at:
+                last = LLMError(f"{self.provider}:{model}: gave up after {self.call_budget:.0f}s "
+                                f"({last})")
+                break
             req = urllib.request.Request(f"{self.base_url}{path}", data=data, headers=headers,
                                          method="POST")
             try:
-                with urllib.request.urlopen(req, timeout=self.timeout) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                return json.loads(_request_with_deadline(req, self.timeout).decode("utf-8"))
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", errors="replace")
                 if e.code == 429:
@@ -194,6 +202,30 @@ class OpenAICompatClient:
         if "error" in data:
             raise LLMError(f"{self.provider}:{model}: {data['error']}")
         return data, time.perf_counter() - start
+
+
+def _request_with_deadline(req, timeout: float) -> bytes:
+    """The response body, or TimeoutError after `timeout` seconds of wall-clock time.
+
+    urlopen's own timeout covers each socket operation, not DNS lookups or a server that
+    trickles bytes; this bounds the whole request. A stuck request is abandoned on its
+    daemon thread."""
+    box: dict = {}
+
+    def target():
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                box["body"] = resp.read()
+        except BaseException as e:
+            box["error"] = e
+    t = threading.Thread(target=target, name="notbydefault-request", daemon=True)
+    t.start()
+    t.join(timeout + REQUEST_SLACK_S)
+    if t.is_alive():
+        raise TimeoutError(f"no complete response within {timeout + REQUEST_SLACK_S:.0f}s")
+    if "error" in box:
+        raise box["error"]
+    return box["body"]
 
 
 def parse_usage(data: dict) -> tuple[str, int, int, str | None, float | None]:

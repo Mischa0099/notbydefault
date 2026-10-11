@@ -150,28 +150,6 @@
       "id": "ord-actually-tests",
       "pivot": false,
       "prompt": "Actually, write the tests first, then the endpoint."
-    },
-    {
-      "id": "ho-piv-ditch-groq",
-      "pivot": true,
-      "decisions": [
-        "gpt_oss_120b"
-      ],
-      "prompt": "Honestly Groq has been flaky, let's ditch it and run the models through OpenRouter.",
-      "split": "heldout"
-    },
-    {
-      "id": "ho-piv-deadline",
-      "pivot": true,
-      "decisions": [],
-      "prompt": "Change of plans: the investor demo is next Tuesday, so we have 5 days instead of 2 weeks.",
-      "split": "heldout"
-    },
-    {
-      "id": "ho-ord-rename",
-      "pivot": false,
-      "prompt": "Actually, rename the redis helper to cache_client, it reads better.",
-      "split": "heldout"
     }
   ]
 }

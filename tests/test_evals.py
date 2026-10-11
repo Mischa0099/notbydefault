@@ -27,7 +27,8 @@ def test_detection_section_scores_every_case():
     res = scored("detection")
     m = res["metrics"]
     h = res["heldout_metrics"]
-    assert m["cases"] + h["cases"] == len(evals.load("detection")["cases"])
+    assert m["cases"] == len(evals.load_cases("detection", "original"))
+    assert h["cases"] == len(evals.load_cases("detection", "heldout"))
     assert m["passed"] + h["passed"] == sum(r["ok"] for r in res["cases"])
     assert len(res["failures"]) == m["cases"] + h["cases"] - m["passed"] - h["passed"]
     row = next(r for r in res["cases"] if r["case"] == "det-pnpm-orm-and-db")
@@ -98,13 +99,32 @@ def test_fit_is_final_with_a_finished_results_file(tmp_path):
 def test_heldout_cases_are_scored_separately():
     res = scored("detection")
     held = [r["case"] for r in res["cases"] if r["split"] == "heldout"]
-    assert held and all(c.startswith("ho-") for c in held)
+    assert held == [c["id"] for c in evals.load("heldout/detection")["cases"]]
     assert res["heldout_metrics"]["cases"] == len(held)
     assert res["metrics"]["cases"] == len(res["cases"]) - len(held)
 
 
 def test_requirements_heldout_cases_use_their_own_project(fake):
     res = scored("requirements")
-    uk = next(r for r in res["cases"] if r["case"] == "ho-req-uk")
-    assert set(uk["decisions"]) == {"supabase", "stripe", "anthropic_sdk", "gpt_oss_20b",
+    eu = next(r for r in res["cases"] if r["case"] == "hd-req-eu")
+    assert eu["split"] == "heldout"
+    assert set(eu["decisions"]) == {"supabase", "stripe", "anthropic_sdk", "gpt_oss_20b",
                                     "claude_sonnet", "prisma"}
+
+
+def test_case_sets_can_be_run_alone():
+    assert {c["split"] for c in evals.load_cases("pivot", "heldout")} == {"heldout"}
+    assert {c["split"] for c in evals.load_cases("pivot", "original")} == {"original"}
+    assert evals.load_cases("fit", "heldout") == []
+
+
+def test_run_prints_a_progress_line_per_case_and_records_telemetry(tmp_path):
+    lines = []
+    out = tmp_path / "r.json"
+    evals.run("t", ["detection"], out, out=lines.append, which="heldout")
+    n = len(evals.load_cases("detection", "heldout"))
+    progress = [l for l in lines if l.strip().startswith("[")]
+    assert len(progress) == n and progress[0].strip().startswith(f"[1/{n}] ")
+    assert all("[held-out]" in l for l in progress)
+    saved = json.loads(out.read_text(encoding="utf-8"))
+    assert saved["telemetry"]["exporter"] == "off"    # NOTBYDEFAULT_TELEMETRY=0 in tests

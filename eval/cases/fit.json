@@ -7,18 +7,6 @@
       "decision_id": 21,
       "needs": "the Gemini judge (gemini:gemini-3.8-flash); its free quota resets at midnight Pacific (12:30 IST)",
       "resume": "python -m notbydefault check 21 --project demo-app"
-    },
-    {
-      "id": "fit-13-summaries",
-      "project": "demo-app",
-      "decision_id": 13,
-      "expect": {
-        "status": "final",
-        "verdict": "switch"
-      },
-      "needs": "nothing (finished run)",
-      "resume": "python -m notbydefault check 13 --project demo-app",
-      "split": "heldout"
     }
   ]
 }

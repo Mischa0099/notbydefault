@@ -221,10 +221,12 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
         if hasattr(client, "on_event"):
             client.on_event = tracer.event      # 429 backoffs, retried calls, throttling
         run_at = datetime.now(timezone.utc)
+        state: dict = {"rows": [], "early": False}
         with tracer.root("notbydefault.check", {
                 "notbydefault.decision_id": decision_id, "notbydefault.literal": decision["label"],
                 "notbydefault.chosen": cfg["chosen"], "notbydefault.candidates": cfg["candidates"],
-                "notbydefault.max_cost": opts.max_cost, "notbydefault.estimated_cost": est}):
+                "notbydefault.max_cost": opts.max_cost, "notbydefault.estimated_cost": est},
+                finish=lambda: check_summary(tracer, guard, state)):
             with tracer.step("plan", "planning",
                              reason="decide what to test before spending any request",
                              attrs={"plan": plan_text(decision, cfg, site, n_inputs, est, opts),
@@ -280,6 +282,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                         verifiers = verifiers_mod.generate(
                             caller.analyst(cfg["judge"]), project, decision, site, ctx, cfg["judge"])
             except (BudgetExceeded, LLMError, ValueError, LookupError) as e:
+                state["early"] = True
                 if guard.halt_reason:
                     out(daily_stop_message(guard.halt_reason, client, project, decision_id))
                     out(f"Journal: {save_journal(project, decision_id, tracer, run_at, 'daily_limit')}")
@@ -302,6 +305,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                     rows, failures = run_setups(caller, site, inputs, cfg["candidates"], verifiers,
                                                 cfg["verifier_model"], cfg["temperature"],
                                                 cfg["max_tokens"], cfg["max_retries"], opts.workers)
+                    state["rows"] = rows
                 all_failures += failures
                 judgements = []
                 for jm in cfg["judges"]:
@@ -358,6 +362,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
             failures = all_failures
             stopped = guard.stopped
             if guard.halt_reason:
+                state["early"] = True
                 failures_mod.append(project, decision_id, failures)
                 out(daily_stop_message(guard.halt_reason, client, project, decision_id))
                 out(f"Journal: {save_journal(project, decision_id, tracer, run_at, 'daily_limit')}")
@@ -593,7 +598,9 @@ def blocked_by_requirements(g: Graph, project: Path, decision: dict, cfg: dict, 
                         if m.split(":", 1)[0] in (catalog.get("providers") or {})})
     facts = {p: why_not(f"{p}:x") for p in providers}
     tracer = tracer or make_tracer(decision.get("session_id"))
-    with tracer.root("notbydefault.check", {"notbydefault.decision_id": decision["id"]}):
+    with tracer.root("notbydefault.check", {"notbydefault.decision_id": decision["id"]},
+                     finish=lambda: {"nbd.swap_count": 0, "nbd.retry_rescued": 0,
+                                     "nbd.stopped_early": True, "nbd.cost_usd": 0.0}):
         with tracer.step("requirements", "planning",
                          reason="the new requirements rule out every model in the catalog"):
             tracer.event("blocked_by_requirement", "planning",
@@ -644,6 +651,20 @@ def case_rows(rows, inputs: list[dict]) -> list[dict]:
 def _single_provider(cfg: dict) -> bool:
     used = list(cfg["candidates"]) + [cfg["judge"], cfg["verifier_model"]]
     return len({m.split(":", 1)[0] for m in used}) == 1
+
+
+def check_summary(tracer, guard, state: dict) -> dict:
+    """Root-span attributes for neatlogs Conditions: candidate swaps, retries that rescued an
+    output the model alone got wrong, whether the run stopped early, and what it spent."""
+    from notbydefault.fit.evaluate import ALONE, VERIFIED
+    rows = {(r.sample, r.model, r.setup): r for r in state.get("rows") or []}
+    rescued = sum(1 for (sample, model, setup), r in rows.items()
+                  if setup == VERIFIED and r.passed and r.attempts > 1
+                  and not getattr(rows.get((sample, model, ALONE)), "passed", True))
+    return {"nbd.swap_count": int(tracer.summary().get("swap_candidate", 0)),
+            "nbd.retry_rescued": rescued,
+            "nbd.stopped_early": bool(state.get("early") or guard.stopped or guard.halt_reason),
+            "nbd.cost_usd": round(float(guard.spent), 6)}
 
 
 def save_journal(project: Path, decision_id: int, tracer, run_at: datetime, why: str) -> str:

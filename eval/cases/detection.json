@@ -350,42 +350,6 @@
         "command": "pip install --upgrade openai"
       },
       "expect": []
-    },
-    {
-      "id": "ho-det-ini-model",
-      "why": "model in an INI config (unquoted)",
-      "tool_name": "Write",
-      "tool_input": {
-        "file_path": "{project}/config/llm.ini",
-        "content": "[llm]\nprovider = mistral\nmodel = mistral-large-latest\ntemperature = 0.2\n"
-      },
-      "expect": [
-        "mistral-large-latest"
-      ],
-      "split": "heldout"
-    },
-    {
-      "id": "ho-det-bun-clerk",
-      "why": "new auth provider via bun",
-      "tool_name": "Bash",
-      "tool_input": {
-        "command": "bun add @clerk/nextjs"
-      },
-      "expect": [
-        "Clerk"
-      ],
-      "split": "heldout"
-    },
-    {
-      "id": "ho-neg-docs-mention",
-      "why": "docs comparing models, no choice made",
-      "tool_name": "Write",
-      "tool_input": {
-        "file_path": "{project}/docs/models.md",
-        "content": "# Models\n\nWe compared `gpt-4o` and `claude-sonnet-4-5` before picking one.\n"
-      },
-      "expect": [],
-      "split": "heldout"
     }
   ]
 }

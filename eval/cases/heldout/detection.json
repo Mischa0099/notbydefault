@@ -1,0 +1,15 @@
+{
+  "_comment": "Held-out PreToolUse cases: written before the v3 fixes and never used to tune them. Same format as eval/cases/detection.json.",
+  "cases": [
+    {"id": "hd-det-neon", "why": "new serverless Postgres driver",
+     "tool_name": "Bash", "tool_input": {"command": "pnpm add @neondatabase/serverless"},
+     "expect": ["Neon"]},
+    {"id": "hd-det-deepseek-ts", "why": "hardcoded model in TypeScript",
+     "tool_name": "Write", "tool_input": {"file_path": "{project}/src/llm.ts",
+        "content": "import OpenAI from 'openai';\nconst client = new OpenAI({ baseURL: 'https://api.deepseek.com' });\nexport const reply = (q: string) => client.chat.completions.create({ model: \"deepseek-chat\", messages: [{ role: 'user', content: q }] });\n"},
+     "expect": ["deepseek-chat"]},
+    {"id": "hd-neg-linters", "why": "installing linters and formatters",
+     "tool_name": "Bash", "tool_input": {"command": "pip install ruff black mypy"},
+     "expect": []}
+  ]
+}

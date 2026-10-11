@@ -245,9 +245,40 @@ def _strip_launcher(tokens: list[str]) -> list[str]:
     return tokens
 
 
+# Appending lines to a requirements file from the shell is an install too.
+_TARGET = r"(?P<file>[^\s;&|<>]+)"
+APPENDS = [
+    re.compile(rf"\b(?:echo|printf)\s+(?P<val>[^>|;&\n]+?)\s*>>\s*{_TARGET}", re.I),
+    re.compile(rf"\b(?:echo|printf|Write-Output)\s+(?P<val>[^|;&\n]+?)\s*\|\s*tee\s+(?:-a|--append)\s+{_TARGET}", re.I),
+    re.compile(rf"\bAdd-Content\s+(?:-Path\s+)?{_TARGET}\s+(?:-Value\s+)?(?P<val>[^;&|\n]+)", re.I),
+    re.compile(rf"(?P<val>[^|;&\n]+?)\s*\|\s*Out-File\b(?=[^;&|\n]*-Append)[^;&|\n]*?(?:-FilePath\s+)?"
+               rf"(?P<file>[^\s;&|<>]*requirements[\w.-]*\.txt)", re.I),
+]
+
+
+def manifest_appends(command: str) -> list[tuple[str, str, str | None]]:
+    """(package, "py", requirements file) for each line a shell command appends to a
+    requirements*.txt file (echo/printf >>, tee -a, Add-Content, Out-File -Append)."""
+    results = []
+    for rx in APPENDS:
+        for m in rx.finditer(command or ""):
+            file = m.group("file").strip("'\"")
+            name = Path(file.replace("\\", "/")).name
+            if not re.fullmatch(r"requirements[\w.-]*\.txt", name):
+                continue
+            value = re.sub(r"\\n|`n", " ", m.group("val"))
+            for tok in value.split():
+                tok = tok.strip("'\"")
+                if tok.lower() in {"echo", "printf", "write-output"} or tok.startswith("-"):
+                    continue
+                if re.match(r"[A-Za-z0-9][\w.\-]*(?:\[[\w,]+\])?(?:[<>=!~]=?.*)?$", tok):
+                    results.append((normalize_package(tok, "py"), "py", file))
+    return results
+
+
 def packages_from_command(command: str) -> list[tuple[str, str, str | None]]:
     """(package, ecosystem, manifest) for each package an install command adds."""
-    results = []
+    results = manifest_appends(command)
     for segment in re.split(r"&&|\|\||[;|\n]", command):
         tokens = _strip_launcher(_tokens(segment.strip()))
         for prefix, eco, manifest in INSTALLERS:

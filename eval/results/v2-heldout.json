@@ -1,0 +1,388 @@
+{
+  "version": "v2-heldout",
+  "cases": "heldout",
+  "sections": {
+    "detection": {
+      "cases": [
+        {
+          "case": "hd-det-neon",
+          "split": "heldout",
+          "ok": true,
+          "expected": [
+            "Neon"
+          ],
+          "flagged": [
+            "Neon"
+          ],
+          "asked": true,
+          "ms": 43.8
+        },
+        {
+          "case": "hd-det-deepseek-ts",
+          "split": "heldout",
+          "ok": true,
+          "expected": [
+            "deepseek-chat"
+          ],
+          "flagged": [
+            "deepseek-chat"
+          ],
+          "asked": true,
+          "ms": 30.5
+        },
+        {
+          "case": "hd-neg-linters",
+          "split": "heldout",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.7
+        }
+      ],
+      "failures": [],
+      "metrics": null,
+      "heldout_metrics": {
+        "cases": 3,
+        "passed": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "interruptions": 2,
+        "false_interruptions": 0,
+        "false_interruption_rate": 0.0,
+        "negatives": 1
+      },
+      "trace_id": "2213b86a4cfecf425774a89a28e4c302",
+      "seconds": 0.1
+    },
+    "pivot": {
+      "cases": [
+        {
+          "case": "hd-piv-dynamo",
+          "split": "heldout",
+          "ok": false,
+          "expected_pivot": true,
+          "said_pivot": false,
+          "stage": "prefilter",
+          "phrases": [],
+          "change": null,
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 0,
+          "llm_calls_cached": 0,
+          "ms": 6.2,
+          "reason": "missed pivot: the pre-filter found no change-of-direction phrase"
+        },
+        {
+          "case": "hd-piv-summaries-model",
+          "split": "heldout",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "rather than"
+          ],
+          "change": "Use gpt-oss-20b instead of gemini-3.1-flash-lite for summaries",
+          "mapped": [
+            "gemini_lite"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 1,
+          "ms": 41.4
+        },
+        {
+          "case": "hd-ord-comprehension",
+          "split": "heldout",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Instead"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 1,
+          "ms": 17.4
+        }
+      ],
+      "failures": [
+        {
+          "case": "hd-piv-dynamo",
+          "split": "heldout",
+          "reason": "missed pivot: the pre-filter found no change-of-direction phrase",
+          "prompt": "Can we move the notes over to DynamoDB? Mongo hosting is getting pricey."
+        }
+      ],
+      "metrics": null,
+      "heldout_metrics": {
+        "cases": 3,
+        "passed": 2,
+        "precision": 1.0,
+        "recall": 0.5,
+        "false_pivots": 0,
+        "missed_pivots": 1,
+        "llm_calls_per_ordinary_prompt": 1.0,
+        "ordinary_prompts_reaching_llm": "1/1",
+        "mapping_accuracy": 1.0,
+        "llm_calls": 2,
+        "llm_calls_cached": 2
+      },
+      "trace_id": "6171258b6e4306a9d65ea4048fc6b05e",
+      "seconds": 0.3
+    },
+    "requirements": {
+      "cases": [
+        {
+          "case": "hd-req-eu",
+          "split": "heldout",
+          "ok": true,
+          "requirement": "Customer invoices must be stored and processed only within the European Union.",
+          "constraints": {
+            "data_residency": "EU"
+          },
+          "decisions": {
+            "supabase": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Supabase: where its data lives depends on how it is deployed (the region is chosen when the Supabase project is created); confirm it runs in EU",
+              "basis": "depends on deployment",
+              "property": ""
+            },
+            "stripe": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Stripe may store or process invoice data outside the EU, violating the EU\u2011only data residency requirement",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "anthropic_sdk": {
+              "expected": [
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Anthropic's cloud service may store/process invoice data outside the EU, violating the EU\u2011only data residency requirement",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_20b": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "groq:openai/gpt-oss-20b runs on groq, which documents data residency: US (source: https://console.groq.com/docs/your-data (read 2026-10-11)); EU residency is required",
+              "basis": "provider documentation",
+              "property": ""
+            },
+            "claude_sonnet": {
+              "expected": [
+                "needs_review",
+                "stale"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Using the Anthropic Claude model may send invoice data to non\u2011EU servers, violating the EU\u2011only data residency requirement",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "prisma": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Prisma is an ORM library; data residency depends on the underlying database, not the ORM itself.",
+              "basis": "",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 0
+        },
+        {
+          "case": "hd-req-growth",
+          "split": "heldout",
+          "ok": false,
+          "requirement": "We expect 50x more users after the marketing launch.",
+          "constraints": {
+            "expected_users": 250000
+          },
+          "decisions": {
+            "supabase": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Scaling to 250k users may exceed Supabase\u2019s performance/cost limits, so the database choice needs re\u2011evaluation",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "stripe": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "The 50\u00d7 user increase to ~250k may impact Stripe\u2019s scalability, pricing, and rate limits, requiring re\u2011evaluation of the payment service choice.",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "anthropic_sdk": {
+              "expected": [
+                "needs_review",
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Scaling to 250k users may exceed Anthropic's rate limits or cost assumptions, requiring re\u2011evaluation of the provider choice",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "gpt_oss_20b": {
+              "expected": [
+                "stale"
+              ],
+              "got": "stale",
+              "ok": true,
+              "reason": "Cost check: groq:openai/gpt-oss-20b at list price ($0.07/M input, $0.30/M output; https://console.groq.com/docs/models, 2026-10-10) x 2,500,000 calls/month x 1000 in + 300 out tokens (assumed 1000 input + 300 output tokens per call (no fit test measured yet)) = about $412/month vs a $100/month budget (OVER BUDGET).",
+              "basis": "list price x recorded volume",
+              "property": ""
+            },
+            "claude_sonnet": {
+              "expected": [
+                "stale",
+                "needs_review"
+              ],
+              "got": "needs_review",
+              "ok": true,
+              "reason": "Higher user volume (250k) may strain the current Anthropic model\u2019s capacity and cost, requiring re\u2011evaluation of the model choice",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            },
+            "prisma": {
+              "expected": [
+                "valid"
+              ],
+              "got": "needs_review",
+              "ok": false,
+              "reason": "A 50\u00d7 user increase may strain Prisma's connection handling and query performance, requiring re\u2011evaluation of its suitability and configuration.",
+              "basis": "model judgement (nothing documented)",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 0
+        },
+        {
+          "case": "hd-req-control",
+          "split": "heldout",
+          "ok": true,
+          "requirement": "Add a dark mode to the dashboard.",
+          "constraints": {},
+          "decisions": {
+            "supabase": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Dark mode is a UI feature and does not impact the Supabase database service decision",
+              "basis": "",
+              "property": ""
+            },
+            "stripe": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Dark mode UI changes do not impact the Stripe payment service integration",
+              "basis": "",
+              "property": ""
+            },
+            "anthropic_sdk": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Dark mode is a UI theme change and does not impact the Anthropic AI service decision.",
+              "basis": "",
+              "property": ""
+            },
+            "gpt_oss_20b": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Dark mode is a UI visual change and does not impact the model selection or data residency decision.",
+              "basis": "",
+              "property": ""
+            },
+            "claude_sonnet": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Dark mode is a UI styling change and does not impact the choice of the Anthropic model used in src/assistant.ts.",
+              "basis": "",
+              "property": ""
+            },
+            "prisma": {
+              "expected": [
+                "valid"
+              ],
+              "got": "valid",
+              "ok": true,
+              "reason": "Dark mode is a UI feature and does not impact the Prisma ORM usage",
+              "basis": "",
+              "property": ""
+            }
+          },
+          "llm_calls": 7,
+          "llm_calls_cached": 0
+        }
+      ],
+      "failures": [
+        {
+          "case": "hd-req-growth",
+          "split": "heldout",
+          "decision": "prisma",
+          "reason": "expected valid, got needs_review (model judgement (nothing documented)): A 50\u00d7 user increase may strain Prisma's connection handling and query performance, requiring re\u2011evaluation of its suitability and configuration."
+        }
+      ],
+      "metrics": null,
+      "heldout_metrics": {
+        "cases": 3,
+        "passed": 2,
+        "accuracy": 0.944,
+        "decisions_right": "17/18",
+        "false_stale": 0,
+        "missed_stale": 0,
+        "llm_calls": 21,
+        "llm_calls_cached": 0
+      },
+      "trace_id": "4c163172f8bf9aa78d62940c859f885f",
+      "seconds": 184.1
+    }
+  },
+  "run_at": "2026-10-11T04:13:18+00:00",
+  "commit": "64580da"
+}

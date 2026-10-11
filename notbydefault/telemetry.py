@@ -30,6 +30,9 @@ def send(payload: dict) -> bool:
         _log(payload, "NEATLOGS_API_KEY not set; skipped")
         return False
 
+    from notbydefault.fit.tracing import EXPORT_TIMEOUT_S
+    for var in ("OTEL_EXPORTER_OTLP_TRACES_TIMEOUT", "OTEL_EXPORTER_OTLP_LOGS_TIMEOUT"):
+        os.environ.setdefault(var, str(EXPORT_TIMEOUT_S))
     import neatlogs
 
     neatlogs.init(workflow_name="notbydefault", tags=["pre_tool_hook"],
@@ -48,9 +51,13 @@ def send(payload: dict) -> bool:
     pre_tool_hook(kind=joined("kind"), chosen=joined("chosen"),
                   decision_id=joined("decision_id"), tool_name=payload.get("tool_name") or "",
                   decisions=decisions)
-    neatlogs.flush(timeout_millis=15000)
+    from notbydefault.fit.tracing import FLUSH_DEADLINE_S, _run_with_deadline
+    done, _ = _run_with_deadline(lambda: neatlogs.flush(timeout_millis=15000), FLUSH_DEADLINE_S)
+    if not done:
+        _log(payload, f"neatlogs did not finish exporting within {FLUSH_DEADLINE_S}s; gave up")
+        return False
     failures = neatlogs.get_delivery_diagnostics().get("span_export_failures", 0)
-    neatlogs.shutdown(timeout_millis=5000)
+    _run_with_deadline(lambda: neatlogs.shutdown(timeout_millis=5000), 6)
     _log(payload, f"sent span for decision(s) {joined('decision_id')}"
                   + (f" ({failures} export failure(s))" if failures else ""))
     return not failures
@@ -71,9 +78,12 @@ def replay(payload: dict) -> bool:
         return False
     from notbydefault.fit.tracing import NeatlogsTracer
 
-    tracer = NeatlogsTracer(payload.get("session_id"))
+    project = payload.get("project_dir")
+    tracer = NeatlogsTracer(payload.get("session_id"),
+                            spill_dir=Path(project, ".notbydefault", "telemetry") if project else None)
     with tracer.root(payload.get("name", "notbydefault.hook"),
-                     {"notbydefault.info": payload.get("info") or {}}):
+                     {"notbydefault.info": payload.get("info") or {},
+                      **{k: v for k, v in (payload.get("nbd") or {}).items() if v is not None}}):
         with contextlib.ExitStack() as stack:
             for e in payload.get("journal") or []:
                 extras = {k: v for k, v in e.items()
@@ -91,6 +101,10 @@ def replay(payload: dict) -> bool:
                     tracer.event(e["name"], e["focus_area"], e.get("reason", ""), **extras)
     trace_id = tracer.trace_id
     tracer.flush()
+    if not tracer.export_ok:
+        _log(payload, f"{payload.get('name')} trace {trace_id} not exported ({tracer.export_status}); "
+                      f"journal kept in {tracer.journal_path}")
+        return False
     _log(payload, f"sent {payload.get('name')} trace {trace_id}")
     return True
 

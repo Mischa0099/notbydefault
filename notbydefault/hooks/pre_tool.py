@@ -113,6 +113,25 @@ def skip_if_decided(graph, detection, event: dict, project_dir: Path, tracer) ->
     return True
 
 
+def _send_hook_trace(event: dict, project_dir: Path, tracer, started: float, interrupted: bool,
+                     info: dict) -> None:
+    """Export this hook call as a trace (detached), tagged for neatlogs Conditions with
+    nbd.interrupted (did it ask the user?) and nbd.hook_ms (time spent in the hook)."""
+    import os
+    if os.environ.get("NOTBYDEFAULT_TELEMETRY") == "0":
+        return
+    try:
+        _spawn_telemetry({
+            "kind": "trace", "name": "notbydefault.pre_tool",
+            "session_id": event.get("session_id"), "info": info,
+            "nbd": {"nbd.interrupted": interrupted,
+                    "nbd.hook_ms": round((time.perf_counter() - started) * 1000, 1)},
+            "journal": tracer.journal,
+        }, project_dir)
+    except Exception as e:  # telemetry must never cost the user their prompt
+        _log(project_dir, f"telemetry spawn failed: {e!r}")
+
+
 def _spawn_telemetry(payload: dict, project_dir: Path) -> None:
     """Send the neatlogs span from a detached process so the hook stays fast.
 
@@ -172,11 +191,13 @@ def handle(event: dict, project_dir: Path, tracer=None) -> dict | None:
     from notbydefault.detect import detect
     from notbydefault.fit.tracing import Tracer
 
+    started = time.perf_counter()
     tracer = tracer or Tracer()
     with tracer.step("detect", "tool_use", reason="is this tool call a stack decision?"):
         detections = detect(event)
     if not detections:
         return None
+    found = list(detections)
 
     import os
     from notbydefault.briefing import HOOK_LINES, build
@@ -187,7 +208,10 @@ def handle(event: dict, project_dir: Path, tracer=None) -> dict | None:
                          reason="don't interrupt for a choice the project already made"):
             detections = [d for d in detections
                           if not skip_if_decided(graph, d, event, project_dir, tracer)]
-        if not detections:
+        if not detections:   # a detection, but nothing to ask: still worth a trace
+            _send_hook_trace(event, project_dir, tracer, started, interrupted=False, info={
+                "tool_name": event.get("tool_name"),
+                "skipped": [{"kind": d.kind, "chosen": d.chosen} for d in found]})
             return None
         with tracer.step("record", "state", reason="store the decision in the Decision Graph"):
             ids = [record(graph, d, event, project_dir) for d in detections]
@@ -220,20 +244,12 @@ def handle(event: dict, project_dir: Path, tracer=None) -> dict | None:
                 tracer.event("refresh_spawn_failed", "recovery", f"{e!r}; briefing uses the old cache")
                 _log(project_dir, f"briefing refresh spawn failed: {e!r}")
 
-    if os.environ.get("NOTBYDEFAULT_TELEMETRY") != "0":
-        try:
-            _spawn_telemetry({
-                "kind": "trace", "name": "notbydefault.pre_tool",
-                "session_id": event.get("session_id"),
-                "info": {"tool_name": event.get("tool_name"),
-                         "decisions": [{"decision_id": i, "kind": d.kind, "chosen": d.chosen,
-                                        "category": d.category, "file": d.file}
-                                       for d, i in zip(detections, ids)],
-                         "briefing_lines": len(lines)},
-                "journal": tracer.journal,
-            }, project_dir)
-        except Exception as e:  # telemetry must never cost the user their prompt
-            _log(project_dir, f"telemetry spawn failed: {e!r}")
+    _send_hook_trace(event, project_dir, tracer, started, interrupted=True, info={
+        "tool_name": event.get("tool_name"),
+        "decisions": [{"decision_id": i, "kind": d.kind, "chosen": d.chosen,
+                       "category": d.category, "file": d.file}
+                      for d, i in zip(detections, ids)],
+        "briefing_lines": len(lines)})
 
     return {
         "hookSpecificOutput": {
