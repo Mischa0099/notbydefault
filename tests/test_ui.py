@@ -290,3 +290,17 @@ def test_claim_check_watched_assumptions_and_debt_are_shown(repo):
     overview = cl.get("/").text
     assert "decision debt" in overview and "assumptions expired" in overview
     assert "Decision debt:" in overview and f"decision #{db}: mark reviewed with a reason" in overview
+
+
+def test_claim_checks_and_watch_reopens_appear_in_the_feed(repo):
+    from notbydefault import assumptions, claims
+    from notbydefault import watch as watch_mod
+    p, did, db = repo
+    with Graph.for_project(p) as g:
+        g.update_data(db, agent_reason="Popular with everyone. Data stays in the EU.")
+        claims.store(p, g, db, claims.evaluate(p, g, g.get_node(db), make_client(), split=False))
+        assumptions.record_snapshot(p, g, did)
+        g.add_node("requirement", "EU only", {"constraints": {"data_residency": "EU"}})
+    watch_mod.watch(p, client=make_client(), out=lambda _: None)
+    html = client_for(p).get("/timeline").text
+    assert f"Claim check #{db} MongoDB:" in html and f"Re-opened #{did}" in html

@@ -401,7 +401,7 @@ HOOK_LINE = re.compile(r"^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) ask tool=(\S+) \d+ms 
 @dataclass
 class Event:
     at: datetime
-    kind: str            # caught | hook | pivot | requirement | fit_check | resolve | ui | setup
+    kind: str            # caught | hook | pivot | requirement | fit_check | resolve | claims | watch | ui | setup
     title: str
     detail: str = ""
     href: str | None = None
@@ -511,6 +511,21 @@ def events(project: Path, snap: Snapshot) -> list[Event]:
                         clip(v.get("summary") or ""), f"/decisions/{c.decision_id}",
                         [_effect(snap, c.decision_id)], c.data.get("trace_id")))
     for d in snap.of_type("decision"):
+        c = d["data"].get("claims")
+        if c and c.get("checked_at"):
+            items = c.get("items") or []
+            n = {v: sum(i["verdict"] == v for i in items) for v in ("true", "false", "untested")}
+            ev.append(Event(parse_time(c["checked_at"]), "claims",
+                            f"Claim check #{d['id']} {d['label']}: {n['false']} false, "
+                            f"{n['true']} true, {n['untested']} untested",
+                            "; ".join(f"{i['type']}: \"{i['text']}\"" for i in items
+                                      if i["verdict"] == "false")[:280],
+                            f"/decisions/{d['id']}", [_effect(snap, d["id"])], c.get("trace_id")))
+        broken = (d["data"].get("assumptions") or {})
+        if d["data"].get("review_basis") == "watched assumption" and broken.get("broken_at"):
+            ev.append(Event(parse_time(broken["broken_at"]), "watch",
+                            f"Re-opened #{d['id']} {d['label']}", d["data"].get("review_reason", ""),
+                            f"/decisions/{d['id']}", [_effect(snap, d["id"], "needs_review")]))
         res = d["data"].get("resolution")
         if res:
             ev.append(Event(parse_time(res.get("at")), "resolve",

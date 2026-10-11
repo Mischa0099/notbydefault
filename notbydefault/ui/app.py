@@ -27,7 +27,8 @@ STATUS_TEXT = {"unreviewed": "unreviewed", "reviewed": "reviewed", "needs_review
                "stale": "stale", "accepted": "accepted", "proposed": "proposed", "kept": "kept",
                "adjusting": "adjusting"}
 KIND_TEXT = {"caught": "caught", "hook": "hook", "pivot": "pivot", "requirement": "requirement",
-             "fit_check": "fit check", "resolve": "resolve", "ui": "you", "setup": "setup"}
+             "fit_check": "fit check", "resolve": "resolve", "ui": "you", "setup": "setup",
+             "claims": "claim check", "watch": "watch"}
 
 
 def _ago(t: datetime | None) -> str:

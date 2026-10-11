@@ -6,7 +6,8 @@ decision into one of three lists:
                 provider documents that data stays in the US and EU residency is required), or
                 list price x recorded volume exceeds the budget (a budget cut, more users)
   needs review  it might conflict, but that depends on how it is deployed (self-hosted MongoDB
-                can run in the EU), or only the model's judgement says so (nothing documented)
+                can run in the EU), the provider documents no residency guarantee at all
+                (neither ruled in nor out), or only the model's judgement says so
   still valid   neither
 Each affected decision gets the reason, its basis and source, and an edge to the requirement.
 """
@@ -117,13 +118,15 @@ def constraints_of(node: dict) -> dict:
 
 def provider_facts(decision: dict, pricing, catalog: dict) -> tuple[str | None, list[str], str]:
     """(model id, guaranteed residency regions, source) for a model decision; (None, [], "")
-    when the decision isn't a model or its provider isn't in the catalog."""
+    when the decision isn't a model or its provider isn't in the catalog. A resolved decision
+    is judged on the model it now uses (`resolution.to`)."""
     from notbydefault.fit.candidates import resolve_model_id
     from notbydefault.fit.providers import residency
     if decision["data"].get("kind") != "model":
         return None, [], ""
     try:
-        model = resolve_model_id(decision["label"], pricing)
+        current = (decision["data"].get("resolution") or {}).get("to") or decision["label"]
+        model = resolve_model_id(current, pricing)
     except LookupError:
         return None, [], ""
     cfg = catalog["providers"].get(model.split(":", 1)[0], {})
@@ -169,6 +172,10 @@ def service_residency(decision: dict, constraints: dict, catalog: dict,
         source = f.get("source", "")
     if region in regions:
         return None
+    if not regions:
+        return {"status": "needs_review", "source": source,
+                "reason": f"{f['name']} documents no data-residency guarantee (source: {source}); "
+                          f"confirm with the vendor that {region} residency is possible"}
     return {"status": "stale", "source": source,
             "reason": f"{f['name']} documents data residency: "
                       f"{', '.join(regions) or 'no region guaranteed'} (source: {source}); "
@@ -176,15 +183,28 @@ def service_residency(decision: dict, constraints: dict, catalog: dict,
 
 
 def residency_violation(decision: dict, constraints: dict, pricing, catalog: dict) -> str | None:
-    """A documented reason the decision breaks the residency constraint, or None."""
+    """A documented reason the decision breaks the residency constraint (the provider names
+    its regions and the required one isn't among them), or None."""
     region = (constraints.get("data_residency") or "").upper()
     if not region:
         return None
     model, regions, source = provider_facts(decision, pricing, catalog)
-    if model and region not in regions:
-        where = ", ".join(regions) if regions else "no region guaranteed"
+    if model and regions and region not in regions:
         return (f"{model} runs on {model.split(':', 1)[0]}, which documents data residency: "
-                f"{where} (source: {source}); {region} residency is required")
+                f"{', '.join(regions)} (source: {source}); {region} residency is required")
+    return None
+
+
+def residency_unguaranteed(decision: dict, constraints: dict, pricing, catalog: dict) -> str | None:
+    """The provider documents no residency guarantee at all: it may or may not comply."""
+    region = (constraints.get("data_residency") or "").upper()
+    if not region:
+        return None
+    model, regions, source = provider_facts(decision, pricing, catalog)
+    if model and not regions:
+        return (f"{model} runs on {model.split(':', 1)[0]}, which documents no data-residency "
+                f"guarantee (source: {source}); confirm {region} processing with the provider "
+                "(e.g. a regional or enterprise endpoint) or switch")
     return None
 
 
@@ -245,10 +265,16 @@ def classify(decision: dict, constraints: dict, verdict: dict, pricing, catalog:
         from notbydefault.pivot import cost_line
         return {"status": "stale", "reason": cost_line(cost), "basis": "list price x recorded volume",
                 "source": f"{cost['price']['source']} ({cost['price']['fetched']})"}
+    unguaranteed = residency_unguaranteed(decision, constraints, pricing, catalog)
+    if unguaranteed:
+        _m, _r, source = provider_facts(decision, pricing, catalog)
+        return {"status": "needs_review", "reason": unguaranteed,
+                "basis": "no documented residency guarantee", "source": source}
     svc = service_residency(decision, constraints, catalog, facts)
     if svc:
         basis = ("service documentation" if svc["status"] == "stale"
-                 else "depends on deployment")
+                 else "no documented residency guarantee" if "no data-residency guarantee"
+                 in svc["reason"] else "depends on deployment")
         return {**svc, "basis": basis}
     if verdict.get("affected") is None:
         return {"status": "unclear", "reason": verdict.get("reason", ""), "basis": "", "source": ""}

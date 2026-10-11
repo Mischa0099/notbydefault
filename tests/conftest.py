@@ -20,6 +20,7 @@ CATALOG = {"roles": {"pivot": "groq:openai/gpt-oss-20b", "stale_judge": "groq:op
                      "why": "groq:openai/gpt-oss-120b", "scout": "groq:openai/gpt-oss-120b"},
            "providers": {
     "groq": {"base_url": "https://groq.test/v1", "key_env": "FAKE_GROQ_KEY", "tier": "free",
+             "data_residency": ["US"], "data_residency_source": "https://groq.test/your-data",
              "prices_source": "https://groq.test/models", "prices_fetched": "2026-10-10",
              "models": {
                  "openai/gpt-oss-120b": _m("gpt-oss", "large", 2, 2.5, 10.0),
@@ -168,6 +169,11 @@ def no_telemetry(monkeypatch):
     """Tests never send spans to neatlogs."""
     monkeypatch.setenv("NOTBYDEFAULT_TELEMETRY", "0")
     monkeypatch.setenv("NOTBYDEFAULT_ENTIRE", "0")   # the real Entire CLI is never called
+    from notbydefault import openrouter
+
+    def offline(*a, **k):
+        raise ConnectionError("network is disabled in tests (OpenRouter models API)")
+    monkeypatch.setattr(openrouter, "fetch_models", offline)
 
 
 @pytest.fixture

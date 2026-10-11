@@ -257,16 +257,34 @@ def check_cost(claim: dict, ctx: dict) -> dict:
                          f"{_usd(cheapest['avg_cost'], 6)}/call"
                          if cheapest is not cur else "; the cheapest setup tested"))
             return _verdict("cost", claim, "true" if ok else "false", detail, src, trace)
-    from notbydefault.pivot import cost_check, cost_line, list_price
+    from notbydefault.pivot import DEFAULT_TOKENS, cost_check, cost_line, list_price, named_models
     client = ctx["client"]
     price = list_price(d["label"], client, ctx["project"]) if client is not None else None
     c = cost_check(ctx["graph"], ctx["project"], [price], [d["id"]]) if price else None
-    if not c:
+    # "cheaper than X": compare list prices per call with the model the claim names
+    tin, tout = (c["tokens_in"], c["tokens_out"]) if c else DEFAULT_TOKENS
+    others = [m for m in named_models(claim["text"]) if m.lower() not in d["label"].lower()]
+    other = list_price(others[0], client, ctx["project"]) if price and others else None
+    compared = None
+    if other:
+        mine, theirs = tin * price["in"] + tout * price["out"], tin * other["in"] + tout * other["out"]
+        compared = (mine <= theirs, f"list price {_usd(mine, 6)}/call vs {_usd(theirs, 6)}/call for "
+                                    f"{other['model']} ({tin} in + {tout} out tokens)")
+    if not c and not compared:
         return _verdict("cost", claim, "untested",
                         "no list price or no recorded volume (users x calls per user) to check it")
-    verdict = "untested" if c["budget"] is None else ("false" if c["over_budget"] else "true")
-    return _verdict("cost", claim, verdict, cost_line(c),
-                    f"{c['price']['source']} (fetched {c['price']['fetched']})")
+    parts, ok = [], True
+    if compared:
+        parts.append(compared[1])
+        ok = compared[0]
+    if c:
+        parts.append(cost_line(c))
+        ok = ok and not c["over_budget"]
+    verdict = "true" if ok else "false"
+    if ok and not compared and c["budget"] is None:
+        verdict = "untested"
+    return _verdict("cost", claim, verdict, "; ".join(parts),
+                    f"{price['source']} (fetched {price['fetched']})")
 
 
 def check_quality(claim: dict, ctx: dict) -> dict:
@@ -339,7 +357,11 @@ def check_compliance(claim: dict, ctx: dict) -> dict:
     named = [r for r, rx in REGION_NAMES.items() if re.search(rx, claim["text"], re.IGNORECASE)]
     if regions is None:
         return _verdict("compliance", claim, "untested", note, source)
-    where = ", ".join(regions) or "no region guaranteed"
+    if not regions:
+        return _verdict("compliance", claim, "untested",
+                        f"{note + ': ' if note else ''}no documented data-residency guarantee, so "
+                        "it is neither shown nor ruled out", source)
+    where = ", ".join(regions)
     if not named:
         return _verdict("compliance", claim, "untested",
                         f"names no region; documented data residency: {where}", source)

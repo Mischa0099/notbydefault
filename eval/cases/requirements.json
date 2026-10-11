@@ -1,5 +1,5 @@
 {
-  "_comment": "`notbydefault require` cases against eval/cases/project.json (600,000 model calls/month, $500/month budget). Per decision key, the acceptable statuses: stale (a documented fact or a computable price x recorded volume breaks the requirement), needs_review (may conflict, depends on deployment or judgement), valid (unaffected). A list means either answer is acceptable. Cost math at list price with 1000 input + 300 output tokens per call: gpt-oss-120b $198/month, gemini-3.1-flash-lite $420/month.",
+  "_comment": "`notbydefault require` cases against eval/cases/project.json (600,000 model calls/month, $500/month budget). Per decision key, the acceptable statuses: stale (a documented fact or a computable price x recorded volume breaks the requirement), needs_review (may conflict: depends on deployment, the provider documents no residency guarantee at all, or judgement), valid (unaffected). A list means either answer is acceptable. Cost math at list price with 1000 input + 300 output tokens per call: gpt-oss-120b $198/month, gemini-3.1-flash-lite $420/month. Changed 2026-10-11: a provider with no documented residency guarantee (Gemini) is needs_review, not stale (only a documented other region is stale); gemini_lite in req-eu-residency and req-us-residency moved from stale to needs_review.",
   "cases": [
     {
       "id": "req-eu-residency",
@@ -9,7 +9,7 @@
         "redis": "needs_review",
         "openai_sdk": "needs_review",
         "gpt_oss_120b": "stale",
-        "gemini_lite": "stale",
+        "gemini_lite": "needs_review",
         "sqlalchemy": "valid"
       },
       "notes": "Groq documents US-only storage; Gemini API guarantees no region. MongoDB/Redis depend on where they are deployed. SQLAlchemy is a library that stores nothing."
@@ -25,7 +25,7 @@
           "valid"
         ],
         "gpt_oss_120b": "valid",
-        "gemini_lite": "stale",
+        "gemini_lite": "needs_review",
         "sqlalchemy": "valid"
       },
       "notes": "Groq documents US storage, so the Groq model stays valid; Gemini guarantees no region."

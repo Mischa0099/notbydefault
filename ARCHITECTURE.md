@@ -77,7 +77,11 @@ trace id. After the verdict the check records the decision's **assumptions** and
 
 - **`require`** (`stale.py`): a new requirement becomes machine-checkable constraints; each
   decision is sorted into stale (a documented fact or list price × volume breaks it),
-  needs review (depends on deployment, or only the model's judgement says so) or valid.
+  needs review (it may conflict: depends on deployment, the provider documents no guarantee
+  at all, or only the model's judgement says so) or valid. Residency: a provider that names
+  its regions without the required one is stale (Groq: US only); one that guarantees no region
+  is needs review (Gemini). A resolved decision is judged on the model it now uses
+  (`resolution.to`), not the one it was caught with.
 - **`claims <id>`** (`claims.py`): the agent's stated reason (from the hook, else read back from
   the Entire session transcript) is split into typed claims by one cheap model call (only spans
   quoted verbatim are kept; keyword split as fallback): cost, quality, latency, compliance,
@@ -134,9 +138,23 @@ timeline; evals; costs); `actions.py` calls the existing functions (review with 
 `require`, resolve dry run) behind a CSRF token + same-origin check, disabled with `--read-only`.
 Live mode polls a file-stat version every 2 s; the graph animates new nodes in.
 
+## Demo dataset
+
+`python scripts/demo_dataset.py` builds `.demo-dataset/demo-app` (gitignored) from a throwaway
+copy of demo-app (graph copied with SQLite's backup API, so the live one is never touched) and
+runs the whole loop on it: `watch` baseline; `resolve 21` dry run then `--apply` on its own
+branch (to the fit check's recommendation, gemini-3.1-flash-lite, verified from the response
+cache); the pivot prompt through the UserPromptSubmit hook; the EU data-residency requirement
+(lands on the resolved #21: Gemini guarantees no region, so needs review, while #13 on Groq goes
+stale); an agent turn through the PreToolUse hook whose stated reason comes from a scripted,
+labelled transcript (`scripts/demo_transcript.jsonl`); `claims` on that decision; `watch`;
+`scan`. It prints every neatlogs trace id it created. A rebuild reuses the previous build's
+model-response cache (`--fresh` ignores it; `--offline` skips the Groq steps).
+`python scripts/ui_screenshots.py --project .demo-dataset/demo-app --claims-decision <id>`
+renders every page from it.
+
 ## Tests
 
 `pytest` (no network): fake providers (`tests/conftest.py`'s `FakeTransport` behind the real
 `ProviderSet`), a fake Entire CLI, throwaway projects in `tmp_path`, and a guard that fails any
-test touching `demo-app/.notbydefault`. `scripts/ui_screenshots.py` renders every UI page from a
-throwaway copy of demo-app into `docs/screenshots/`.
+test touching `demo-app/.notbydefault` or reaching the OpenRouter models API.

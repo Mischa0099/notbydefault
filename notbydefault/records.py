@@ -78,6 +78,16 @@ def why_text(d: dict) -> str:
     if data.get("verdict_summary"):
         return data["verdict_summary"]
     how = f" ({data.get('evidence')})" if data.get("evidence") else ""
+    if data.get("agent_reason"):
+        said = " ".join(data["agent_reason"].split())
+        claims = data.get("claims") or {}
+        items = claims.get("items") or []
+        tally = (f" Claim check: {sum(i['verdict'] == 'true' for i in items)} true, "
+                 f"{sum(i['verdict'] == 'false' for i in items)} false, "
+                 f"{sum(i['verdict'] == 'untested' for i in items)} untested."
+                 if claims else " Not checked yet (`notbydefault claims`).")
+        return (f"Chosen by a coding agent's {data.get('tool_name') or 'tool'} call{how}. The agent "
+                f"said (unverified): \"{said[:400]}{'...' if len(said) > 400 else ''}\".{tally}")
     return (f"Chosen by a coding agent's {data.get('tool_name') or 'tool'} call{how}; "
             "no recorded reason beyond that yet.")
 

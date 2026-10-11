@@ -76,3 +76,11 @@ def test_scan_prints_the_score_and_table_and_record_adds_the_findings(tmp_path):
 def test_no_graph_says_init_first(tmp_path):
     out = []
     assert scan.scan(tmp_path, out=out.append) == 1 and "init" in out[0]
+
+
+def test_a_resolved_decisions_new_model_is_not_reported_as_unrecorded(tmp_path):
+    p, did = make_project(tmp_path)
+    (p / "app.py").write_text('MODEL = "gemini-3.5-flash-lite"\n')
+    with Graph.for_project(p) as g:
+        g.update_data(did, resolution={"to": "gemini:gemini-3.5-flash-lite"})
+        assert scan.unrecorded(p, g) == []

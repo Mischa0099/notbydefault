@@ -81,7 +81,8 @@ def test_claims_are_checked_against_the_fit_check_and_documented_facts(checked):
     for kind in ("cost", "quality", "latency"):
         assert by[kind]["verdict"] in ("true", "false")
         assert by[kind]["source"] == f"fit check {results}"
-    assert by["compliance"]["verdict"] == "false"        # groq documents no EU residency
+    assert by["compliance"]["verdict"] == "false"    # groq documents US-only residency
+    assert "documented data residency: US" in by["compliance"]["detail"]
     assert by["popularity"]["verdict"] == "untested"
     assert "not evidence for your project" in by["popularity"]["detail"]
     assert by["maturity"]["verdict"] == "untested"
@@ -292,3 +293,24 @@ def test_auto_check_stops_the_queue_when_a_check_hits_a_quota(checked):
                     check_fn=limited)
     assert calls == [did]
     assert any(l.startswith(f"stopped    #{did}") for l in out)
+
+
+def test_compliance_claim_on_a_provider_without_a_guarantee_is_untested(tmp_path):
+    p, did = make_project(tmp_path)
+    with Graph.for_project(p) as g:
+        g.update_data(did, agent_reason="Data stays in the EU.",
+                      resolution={"to": "gemini:gemini-3.5-flash-lite"})
+        c = claims.evaluate(p, g, g.get_node(did), make_client(), split=False)
+    [item] = c["items"]
+    assert item["verdict"] == "untested"
+    assert "no documented data-residency guarantee" in item["detail"]
+
+
+def test_cheaper_than_claim_compares_list_prices_with_the_named_model(tmp_path):
+    p, did = make_project(tmp_path)
+    with Graph.for_project(p) as g:      # fake list prices: gpt-oss-120b 2.5/10, qwen 0.20/0.80
+        g.update_data(did, agent_reason="It is cheaper than qwen3.8-27b.")
+        c = claims.evaluate(p, g, g.get_node(did), make_client(), split=False)
+    [item] = c["items"]
+    assert item["verdict"] == "false"
+    assert "for groq:qwen/qwen3.8-27b" in item["detail"] and "list price $" in item["detail"]

@@ -339,3 +339,5 @@ li.broken { background: color-mix(in srgb, var(--bad-bg) 50%, transparent); padd
 .debt { margin-top: 22px; }
 .debt td { vertical-align: top; }
 .debt code.copy { white-space: nowrap; }
+.feed li.k-claims .dot, .k-claims.lk i, .tl-item.k-claims::before { border-color: var(--bad); background: var(--sheet); border-style: double; border-width: 3px; }
+.feed li.k-watch .dot, .k-watch.lk i, .tl-item.k-watch::before { border-color: var(--warn); background: var(--sheet); border-style: double; border-width: 3px; }

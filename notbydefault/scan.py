@@ -36,7 +36,12 @@ def unrecorded(project: Path, graph) -> list[Found]:
     from notbydefault.detect import (_project_files, _read, dependency_names, is_manifest,
                                      lookup_service, model_ids)
     project = Path(project).resolve()
-    known = {(d["data"].get("kind"), d["label"].lower()) for d in graph.nodes("decision")}
+    known = set()
+    for d in graph.nodes("decision"):
+        known.add((d["data"].get("kind"), d["label"].lower()))
+        to = (d["data"].get("resolution") or {}).get("to")
+        if to:      # resolve switched it: the new model is this decision's, not a new choice
+            known.add(("model", to.split(":", 1)[-1].lower()))
     found: dict[tuple[str, str], Found] = {}
     for path in _project_files(project, None):
         text = _read(str(path))

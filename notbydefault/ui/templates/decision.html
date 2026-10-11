@@ -20,6 +20,7 @@
     <h2 id="h-receipt" class="sr-only">Receipt</h2>
     <dl class="kv">
       <dt>Chosen</dt><dd><code>{{ data.chosen or d.label }}</code>{% if data.openrouter_id and data.openrouter_id != data.chosen %} <span class="muted">as</span> <code>{{ data.openrouter_id }}</code>{% endif %}</dd>
+      {% if data.resolution %}<dt>Now</dt><dd><code>{{ data.resolution.to }}</code> <span class="muted small">· resolved on <code>{{ data.resolution.branch }}</code> {{ data.resolution.at|when }}</span></dd>{% endif %}
       <dt>By</dt><dd>{% if data.tool_name %}an agent's <b>{{ data.tool_name }}</b> tool call{% if data.tool_use_id %} <code class="small">{{ data.tool_use_id }}</code>{% endif %}{% else %}{{ data.source or "recorded by hand" }}{% endif %}</dd>
       {% if data.command %}<dt>Command</dt><dd><code>{{ data.command }}</code></dd>{% endif %}
       {% if data.file %}<dt>Seen in</dt><dd>{{ file(data.file) }}{% if data.evidence %} <span class="muted small">({{ data.evidence }})</span>{% endif %}</dd>{% endif %}
@@ -36,7 +37,7 @@
     <hr>
     <dl class="kv sources">
       <dt>Record</dt><dd>{{ file(v.record) }}</dd>
-      <dt>Checkpoint</dt><dd>{% if v.record_links and v.record_links.sha %}<a class="mono small" href="{{ v.record_links.link or '#' }}" target="_blank" rel="noopener noreferrer">{{ v.record_links.sha[:12] }} ↗</a>{% if v.record_links.checkpoint %} <span class="tag">checkpoint {{ v.record_links.checkpoint }}</span>{% endif %}{% elif v.record %}<span class="muted small">record not committed yet</span>{% else %}<span class="muted">-</span>{% endif %}</dd>
+      <dt>Checkpoint</dt><dd>{% if v.record_links and v.record_links.sha %}{% if v.record_links.link %}<a class="mono small" href="{{ v.record_links.link }}" target="_blank" rel="noopener noreferrer">{{ v.record_links.sha[:12] }} ↗</a>{% else %}<code class="small" title="no GitHub remote, so no entire.io link">{{ v.record_links.sha[:12] }}</code>{% endif %}{% if v.record_links.checkpoint %} <span class="tag">checkpoint {{ v.record_links.checkpoint }}</span>{% endif %}{% elif v.record %}<span class="muted small">record not committed yet</span>{% else %}<span class="muted">-</span>{% endif %}</dd>
       <dt>Results</dt><dd>{{ file(v.fit.results if v.fit else None) }}</dd>
       <dt>Trace</dt><dd>{{ trace(v.fit.trace_id if v.fit else None, v.fit.trace_url if v.fit else None) }}</dd>
     </dl>

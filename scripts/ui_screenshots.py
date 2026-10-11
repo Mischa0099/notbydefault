@@ -51,6 +51,10 @@ def main() -> int:
     ap.add_argument("--height", type=int, default=860)
     ap.add_argument("--out", default=str(REPO / "docs" / "screenshots"))
     ap.add_argument("--decision", type=int, default=21)
+    ap.add_argument("--project", help="render this project as it is (e.g. the demo dataset) "
+                                      "instead of a throwaway copy of demo-app")
+    ap.add_argument("--claims-decision", type=int,
+                    help="also shoot this decision's page as decision-claims-*.png")
     ap.add_argument("--pages", help="comma-separated subset of: "
                     + ", ".join(name for name, _ in PAGES))
     args = ap.parse_args()
@@ -60,8 +64,10 @@ def main() -> int:
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    pages = PAGES + ([("decision-claims", f"/decisions/{args.claims_decision}")]
+                     if args.claims_decision else [])
     with tempfile.TemporaryDirectory() as tmp:
-        project = throwaway_demo(Path(tmp) / "demo-app")
+        project = Path(args.project).resolve() if args.project else throwaway_demo(Path(tmp) / "demo-app")
         port = free_port()
         server = uvicorn.Server(uvicorn.Config(create_app(project), host="127.0.0.1", port=port,
                                                log_level="warning"))
@@ -78,7 +84,7 @@ def main() -> int:
                 errors: list[str] = []
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
-                for name, path in PAGES:
+                for name, path in pages:
                     if args.pages and name not in args.pages.split(","):
                         continue
                     page.goto(base + path.format(did=args.decision), wait_until="networkidle")

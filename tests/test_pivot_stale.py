@@ -272,6 +272,47 @@ def test_model_judgement_alone_never_marks_stale(project):
         assert "stale_reason" not in d
 
 
+def test_no_documented_guarantee_needs_review_but_another_region_is_stale(project):
+    """Gemini documents no residency guarantee: it may or may not comply -> needs review.
+    Groq documents US only: EU provably breaks -> stale."""
+    p, did, db = project
+    with Graph.for_project(p) as g:
+        lite = g.add_node("decision", "gemini-3.5-flash-lite", {
+            "kind": "model", "category": "ai-model", "status": "reviewed", "file": "s.py"})
+    run_require(p, "We signed an EU customer: EU data residency required")
+    with Graph.for_project(p) as g:
+        gem, groq = g.get_node(lite)["data"], g.get_node(did)["data"]
+    assert gem["status"] == "needs_review"
+    assert gem["review_basis"] == "no documented residency guarantee"
+    assert "documents no data-residency guarantee" in gem["review_reason"]
+    assert gem["review_source"] == ""          # the fake catalog has no residency source for gemini
+    assert groq["status"] == "stale" and groq["stale_basis"] == "provider documentation"
+    assert "documents data residency: US" in groq["stale_reason"]
+
+
+def test_a_resolved_decision_is_judged_on_the_model_it_now_uses(project):
+    p, did, db = project
+    with Graph.for_project(p) as g:     # resolve --apply switched it from groq to gemini
+        g.update_data(did, resolution={
+            "at": "2026-10-11T10:00:00+00:00", "branch": "nbd/x", "from": "groq:openai/gpt-oss-120b",
+            "to": "gemini:gemini-3.5-flash-lite", "files": ["app.py"], "sites": ["app.py"],
+            "left_alone": [], "tests": "passed", "verifiers": "8/8 production", "trace_id": None})
+    run_require(p, "We signed an EU customer: EU data residency required")
+    with Graph.for_project(p) as g:
+        d = g.get_node(did)["data"]
+    assert d["status"] == "needs_review"
+    assert d["review_reason"].startswith("gemini:gemini-3.5-flash-lite runs on gemini, which "
+                                         "documents no data-residency guarantee")
+
+
+def test_service_without_a_documented_region_needs_review():
+    from notbydefault.stale import service_residency
+    facts = {"vague": {"name": "Vague", "residency": [], "source": "https://vague"}}
+    svc = {"label": "Vague", "data": {"kind": "service"}}
+    r = service_residency(svc, {"data_residency": "EU"}, {}, facts)
+    assert r["status"] == "needs_review" and "no data-residency guarantee" in r["reason"]
+
+
 def test_service_with_documented_region_is_stale(project):
     p, did, db = project
     with Graph.for_project(p) as g:
@@ -281,7 +322,7 @@ def test_service_with_documented_region_is_stale(project):
     with Graph.for_project(p) as g:
         d = g.get_node(groq)["data"]
         assert d["status"] == "stale" and d["stale_basis"] == "service documentation"
-        assert "console.groq.com/docs/your-data" in d["stale_source"] or d["stale_source"] == ""
+        assert d["stale_source"] == "https://groq.test/your-data"
 
 
 def test_classify_rules():

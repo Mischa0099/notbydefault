@@ -43,7 +43,7 @@
     {% for r in ov.debt.rows %}
       <tr><td><span class="pill {{ 'bad' if r.count != 'unchecked' else '' }}">{{ r.count }}</span></td>
         <td class="mono small">{% if r.id %}<a href="/decisions/{{ r.id }}">#{{ r.id }} {{ r.decision }}</a>{% else %}{{ r.decision }}{% endif %}</td>
-        <td class="small">{{ r.why }}</td>
+        <td class="small" title="{{ r.why }}">{{ r.why|truncate(170, True, "…") }}</td>
         <td><code class="copy" data-copy="{{ r.next }}" title="click to copy">{{ r.next }}</code></td></tr>
     {% endfor %}
     </tbody>
