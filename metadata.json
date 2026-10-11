@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4P29RP9F7SNH40Q1Q42KV80",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "ARCHITECTURE.md",
+    "notbydefault/resolve.py",
+    "notbydefault/scout.py",
+    "notbydefault/testgen.py",
+    "notbydefault/ui/templates/_decision_tail.html",
+    "tests/test_resolve.py",
+    "tests/test_scout.py",
+    "tests/test_testgen.py",
+    "tests/test_ui.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 118,
+    "cache_creation_tokens": 125881,
+    "cache_read_tokens": 6768008,
+    "output_tokens": 47834,
+    "api_call_count": 58
+  }
+}

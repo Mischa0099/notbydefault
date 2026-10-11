@@ -1,0 +1,74 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4P29RP9F7SNH40Q1Q42KV80",
+  "session_id": "bf4f3f43-23eb-4500-98cd-5c2ba6cc1587",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T18:06:19.3231682Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "ARCHITECTURE.md",
+    "notbydefault/resolve.py",
+    "notbydefault/scout.py",
+    "notbydefault/testgen.py",
+    "notbydefault/ui/templates/_decision_tail.html",
+    "tests/test_resolve.py",
+    "tests/test_scout.py",
+    "tests/test_testgen.py",
+    "tests/test_ui.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "7c7f4e24dc1e",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 118,
+    "cache_creation_tokens": 125881,
+    "cache_read_tokens": 6768008,
+    "output_tokens": 47834,
+    "api_call_count": 58
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-11T18:06:19.1486406Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 1591,
+    "human_removed": 1033,
+    "total_committed": 904,
+    "total_lines_changed": 2624,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1132,
+      "user_lines_removed": 1033,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/resolve.py": 1050,
+        "notbydefault/scout.py": 74
+      },
+      "user_removed_per_file": {
+        "notbydefault/resolve.py": 1033
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 8,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2046,
+      "agent_lines_removed": 1440,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8
+      }
+    }
+  ]
+}
