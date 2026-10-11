@@ -62,3 +62,13 @@ Tests for each, no network in tests. Stage, msg.txt (no Co-Authored-By), don't c
 ---
 
 go ahead with step 3 and continue with all the othe steps till step 8
+
+---
+
+<pasted_content id="359c">
+After claims/watch/scan are done: build a demo dataset on a throwaway copy of demo-app that exercises everything, so no UI page shows an empty state:
+- run the pivot scenario and the EU data-residency requirement (real Groq call is fine, once) so there's a pivot and #21 goes needs_review
+- run resolve #21 (dry-run + apply on the copy's branch) so a resolution exists
+- run claims + watch + scan on it
+Then regenerate docs/screenshots and tell me which screenshots changed. Make it reproducible as `python scripts/demo_dataset.py` (prints every trace id it created). Update ARCHITECTURE.md.
+</pasted_content id="359c">
