@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4N0QVZZS0KSJ5C01W521699",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".gitignore",
+    "demo-app/eval/action_item_verifiers.py",
+    "eval/cases/heldout/due_dates.json",
+    "eval/results/v3.json",
+    "notbydefault/cli.py",
+    "notbydefault/fit/candidates.py",
+    "notbydefault/fit/checks.py",
+    "notbydefault/fit/providers.py",
+    "notbydefault/fit/report.py",
+    "notbydefault/fit/reverify.py",
+    "notbydefault/fit/run.py",
+    "tests/test_due_dates.py",
+    "tests/test_fit_check.py",
+    "tests/test_fit_units.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 684,
+    "cache_creation_tokens": 956424,
+    "cache_read_tokens": 129637068,
+    "output_tokens": 349279,
+    "api_call_count": 336
+  }
+}
