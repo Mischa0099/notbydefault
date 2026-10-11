@@ -1,0 +1,56 @@
+<pasted_content id="5964">
+NotByDefault is going into submission in ~10 hours. Two tasks, in order. Work in small steps, stop with a one-line status after each so your response doesn't get cut off.
+
+TASK 1 — Demo dataset. Make the UI pages non-empty on a throwaway copy of demo-app, so every scene in the video shows real data.
+
+Create scripts/demo_dataset.py. It must be reproducible: `python scripts/demo_dataset.py --out .demo-dataset/demo-app` resets .demo-dataset/demo-app from demo-app/ and runs these steps, printing every trace id, every graph id, and every file written:
+
+1. Seed decisions and reasons. For the existing decisions (#13 summaries, #21 action items, and the extra ones listed in `show`), record the agent's stated reason so the claim-check receipt is not empty. Reasons must sound like a real coding agent:
+   - #21: "openai/gpt-oss-120b: cost-effective, strong at structured extraction, widely used in production"
+   - #13: "openai/gpt-oss-120b: good at summarization and the standard choice"
+   - MongoDB: "schemaless, scales well, popular for AI apps"
+   - OpenAI: "most reliable provider"
+   - gpt-4o: "best general-purpose model"
+2. Apply resolve #21 (dry-run first, then --apply on the branch nbd/21-switch-to-gemini-3-1-flash-lite in the copy). This exercises resolve, generates tests (0 -> 4/4 on extract_action_items), writes the record and the PR text.
+3. Record one pivot: a user prompt that contradicts an earlier decision ("let's drop verifiers, they slow things down"), so the timeline shows a Pivot Check hit.
+4. Run `notbydefault claims 21 --project <copy>` so the claim-check verdicts are stored on #21: cost=false ($407/mo vs $375 budget), quality=false (10/12 vs 11/12), popularity=untested-not-evidence. Store sources (trace id, results file, fact URL).
+5. Add the requirement "data must stay in the EU" with the right wording: Groq-US-only -> stale, Gemini-no-documented-region -> needs_review. So the copy's #21 (now Gemini) is needs_review and the counterfactual #13 (still on Groq) is stale.
+6. Run `notbydefault watch --project <copy>` so the UI shows: "re-opened #21: assumption 'data region: any' broken by requirement 'EU only'".
+7. Run `notbydefault scan --project <copy>` so the overview shows the debt score (unchecked / claims false / assumptions expired) over real decisions, not zero.
+8. Regenerate every page in docs/screenshots on the demo copy, in both light and dark. The decision #21 receipt must show: the agent's stated reason, the claim-check table with ✗ / ✗ / –, the fit-check evidence table with trace 4bcff389…, the resolve PR with "4 generated tests, 0 -> 4/4 passing", and the needs-review banner with the EU reasoning.
+
+No live Groq/Gemini calls unless strictly necessary. If something needs a live call, print exactly which step and skip it when --offline. Tests should mock any model call.
+
+TASK 2 — One wording pass to match the sharpened pitch. In the UI, the check report, the decision record and the resolve PR, use this language consistently:
+- The claim-check section is titled "Claim check: the agent's reasons, tested" (not "Claim check").
+- Over the fit-check table add one line: "Multi-candidate workload evaluation on your own data. Shared benchmarks are a prior, not proof."
+- Stale vs needs_review: a stale card says "invalidated: <fact that broke it>"; a needs-review card says "needs review: evidence warrants another look because <reason>". Separate strings.
+- In the resolve PR, under the current "Why" section add: "Verifies the agent's stated reason, not just its result."
+- Over the overview debt tile add: "Decision debt: choices that are unchecked, whose claims proved false, or whose assumptions have expired."
+Grep the UI templates, cli.py, resolve.py, claims.py and record templates. One commit's worth of changes. No new features.
+
+Stage both tasks, write msg.txt (no Co-Authored-By line), run the full suite serially (-q -x -p no:cacheprovider --no-header). Don't commit.
+</pasted_content id="5964">
+
+---
+
+<pasted_content id="5964">
+Good catches. Decisions, in order of the questions:
+
+Q1 Quality verdict on #21: Option 1 — compare to in-budget best. A quality claim is false when any tested setup within budget scored higher. Here that's Gemini alone at 11/12 vs 10/12, so the receipt shows ✗ with that detail: "strong at extraction — 10/12 vs 11/12 at gemini-3.1-flash-lite, within budget". When no in-budget candidate scored higher, say "no in-budget candidate scored higher". Add one unit test. This is a product rule change, not a demo-only tweak.
+
+Q2 Generated tests: show the real 12. The honest number is better. The receipt and PR say "12 generated cases, 0/12 → 12/12 passing" (not "4 tests"). Update the dataset expectations and the video script will match the real number.
+
+On the other three findings:
+
+3. Watch wording: fine as-is for the already-needs-review case. In the dataset, run `require` AFTER `resolve` so the EU requirement lands on the resolved decision. Then watch prints "re-opened #21" the first time, matching the pitch. If require is run first, watch stays with "already #21 … is needs_review". Both are correct; order the dataset so the first path happens. Also, truncate the quoted requirement text in the watch line: show "'data region: any' broken by requirement 'data must stay in the EU'" (full text), not an "EU only" shorthand I invented.
+
+4. Live calls, decide each separately:
+   a) Pivot (needs one call): skip under --offline. For the demo, write ONE seeded pivot into the graph with source=seeded so the timeline shows it: "let's drop verifiers, they slow things down → affects the verifier decision". Mark it seeded in the UI so it's honest. Keep the real pivot path unchanged.
+   b) Requirement (needs one call to extract constraints): add a deterministic fallback that reads region out of "data must stay in the <region>" by regex when the model call fails or --offline is set. Record the extraction source in the constraint node ("regex-fallback"). This is a product improvement, not a demo hack — real users will hit this when their key quota is low.
+   c) Claims (keyword fallback misses two claims): fix the fallback. Split on commas, semicolons and colons; try each clause against the claim-type keywords. Add tests for "cost-effective, strong at structured extraction, widely used in production" extracting all three.
+
+Spec-vs-code general rule: trust the code when it's correct and I'll update the spec text. Only change the code when the output is actually wrong on its own terms, not just different from the spec.
+
+Keep going with the demo dataset. Stop with a one-line status after each step so your response doesn't get cut off.
+</pasted_content id="5964">
