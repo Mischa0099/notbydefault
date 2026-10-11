@@ -1,0 +1,119 @@
+<pasted_content id="359c">
+Build `notbydefault ui` — a local web UI for the Decision Graph. This is what judges will see in the demo video, so it must look distinctive and polished, not like a generic admin dashboard.
+
+STACK: FastAPI + Jinja2 server-rendered pages + HTMX + Cytoscape.js (+ cytoscape-dagre layout). Vendor the JS files into notbydefault/ui/static/ (no CDN at runtime, no npm build step). Command: `python -m notbydefault ui --project <dir> [--port 8765] [--read-only]`. Bind 127.0.0.1 only. Opens the browser.
+
+DESIGN DIRECTION: "engineering notebook / audit receipts". Every decision reads like a receipt: what was chosen, by whom (agent tool call), why, and the evidence. Light mode = warm off-white paper, ink text; dark mode = graphite. Monospace for model names, IDs, numbers; a clean sans for prose. Status colours used sparingly and consistently: verified/reviewed = green, unreviewed = neutral, needs_review = amber, stale = red, pivot = violet. Toggle for dark/light (remember in localStorage, wrapped in try/catch). Works at 1280px and down to a laptop screen; no horizontal scroll.
+
+PAGES
+1. Overview: headline tiles (decisions caught, unreviewed, needs review, stale, fit checks run, monthly savings from recommendations — per-decision, never summed across different volume assumptions), a "latest activity" feed (hook interrupts, pivots, requirement changes, fit checks, resolves), and the one-line motto "no decision without a why".
+2. Decisions list: filterable by status/type; each row shows the choice, status pill, last evidence, and "chosen by default?" flag.
+3. Decision detail (the money page): the receipt — choice, reason, who/when, call site + affected code (from Entire Graph), the fit-check evidence table exactly as the CLI report shows it (setups, correct with CI, hard, F1, verifier pass, both judges, latency, cost/call, monthly, fits budget), recommendation(s), rejected alternatives with reasons, caveats/assumptions, failure-bank items, decision record link, resolve PR description + diff if one exists. Every claim links to its source: neatlogs trace ID (copy button + link), Entire checkpoint link (https://entire.io/gh/Mischa0099/notbydefault/commit/<sha>), results file.
+4. Graph: Cytoscape view of goal/requirement/constraint/decision/evidence/alternative/code/pivot nodes and depends_on/supported_by/rejects/affects/serves edges. Distinct shape+colour per node type, status colours on decisions. Click a node → side panel with its details and a link to its page. Filters by node type; "focus" mode that shows one decision's neighbourhood; highlight what a requirement makes stale/needs-review.
+5. Timeline: chronological pivots, requirement changes, decisions, fit checks and resolves, showing cause → effect (e.g. "requirement: EU data residency → #21 needs review").
+6. Evals: v1→v2→v3(→v4) tables from eval/results, held-out shown separately, simple bar comparisons (inline SVG, no chart library needed). Link trace IDs.
+7. Costs: render business/costs.md/csv with the ASSUMPTION labels visible.
+
+LIVE MODE (key demo moment): the UI polls graph.db (HTMX every 2s, or SSE) so when the Claude Code hook catches a decision in another window, the new decision appears in the activity feed and the graph node animates in. Must not lock the SQLite DB (read-only connections, short transactions).
+
+ACTIONS (disabled entirely with --read-only; read-only also hides any write buttons):
+- Mark a decision reviewed / add a reason.
+- Add a requirement (e.g. "data must stay in the EU") → runs the existing stale/needs_review logic and the UI shows what changed (this is a demo moment).
+- Run `resolve <id>` as DRY RUN only from the UI and show plan + diff; applying stays CLI-only.
+- Every action goes through the existing Python functions (no duplicated logic), is CSRF-safe (same-origin check + token), and is logged in the activity feed.
+
+SAFETY: Jinja autoescape everywhere; never render .env or secrets; only serve files from inside the project; no network calls from the UI except what existing functions do. Tests must never open demo-app/.notbydefault (use throwaway copies — the conftest guard already enforces this).
+
+TESTS: FastAPI TestClient for every page and action (incl. read-only blocks writes, CSRF rejection, escaping of a malicious decision reason, live-poll endpoint returns new nodes). Then use Playwright (Chromium is preinstalled; do NOT run playwright install) against a throwaway copy of demo-app to take screenshots of each page in light and dark into docs/screenshots/ — check them yourself and fix anything that looks off (overlaps, cut text, empty states).
+
+Run the full suite. Stage everything, write msg.txt (no Co-Authored-By line). Don't commit. Tell me the exact command to launch it on demo-app.
+</pasted_content id="359c">
+
+---
+
+Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete.
+
+---
+
+<pasted_content id="359c">
+Your last response was cut off after writing notbydefault/ui/__init__.py and notbydefault/ui/mdlite.py. Continue the UI build from where you stopped. First check what files exist under notbydefault/ui/ and tests/ so you don't redo or overwrite finished work.
+To avoid being cut off again, work in small steps and stop after each one with a one-line status:
+1. data layer (read-only queries over graph.db, results, eval results, costs)
+2. app + base template + static assets (vendored JS) + Overview page
+3. Decisions list + Decision detail
+4. Graph page
+5. Timeline + Evals + Costs
+6. Live polling
+7. Actions (with --read-only and CSRF)
+8. Tests, then Playwright screenshots
+Write each file in pieces of at most ~150 lines (create, then append with Edit). Do step 1 now.
+</pasted_content id="359c">
+
+---
+
+<pasted_content id="359c">
+Build "claim check" and "watched assumptions":
+1. Claims: take the agent's stated reason for a decision (from the hook's recorded reason or the Entire session transcript) and split it into typed claims: cost, quality-on-task, latency, compliance/region, maturity, popularity. Use one cheap model call to classify, with a deterministic keyword fallback. Map each to a check we already have: cost → list price × volume vs budget; quality → fit-check results; latency → measured; region → service_facts.yaml; popularity → always "not evidence for your project". Verdict per claim: true / false / untested, each with its source (trace id, results file, fact URL). Show it as a "claim check" block in the check report, the decision record, the UI decision page and the resolve PR. Add `notbydefault claims <id>`.
+2. Assumptions: every decision stores the assumptions its verdict relied on (volume, budget, prices + fetched date, data region, model list, requirements in force), each with a source. Add `notbydefault watch`: re-evaluate them (requirements, prices from providers.yaml, new models from the providers' model lists, real call volume from neatlogs traces when available) and re-open any decision whose assumption changed, putting its failure-bank cases first. With --auto-check, queue a check (respect quotas and --max-cost). Report "re-opened #21: assumption 'data region: any' broken by requirement 'EU only'".
+3. Debt score in `scan` and the UI overview: decisions unchecked / claims false / assumptions expired.
+Tests for each, no network in tests. Stage, msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="359c">
+
+---
+
+go ahead with step 3 and continue with all the othe steps till step 8
+
+---
+
+<pasted_content id="359c">
+After claims/watch/scan are done: build a demo dataset on a throwaway copy of demo-app that exercises everything, so no UI page shows an empty state:
+- run the pivot scenario and the EU data-residency requirement (real Groq call is fine, once) so there's a pivot and #21 goes needs_review
+- run resolve #21 (dry-run + apply on the copy's branch) so a resolution exists
+- run claims + watch + scan on it
+Then regenerate docs/screenshots and tell me which screenshots changed. Make it reproducible as `python scripts/demo_dataset.py` (prints every trace id it created). Update ARCHITECTURE.md.
+</pasted_content id="359c">
+
+---
+
+<pasted_content id="359c">
+Build claim check + watched assumptions + decision debt in a new `notbydefault scan` command. Work in small steps, stop with a one-line status after each one so your response doesn't get cut off:
+1. Graph: assumptions on decisions (volume, budget, prices+fetched_date, data region, model list, requirements in force), each with a source. Tests.
+2. claims.py: split the agent's reason (from the hook or the Entire session transcript) into typed claims (cost, quality, latency, compliance, popularity), check each against existing checks: cost = list price x volume vs budget; quality = fit-check results; latency = measured; region = service_facts.yaml; popularity = always "not evidence for your project". Verdict per claim: true / false / untested, each with its source. Add `notbydefault claims <id>`. Show it in the check report, the decision record, the UI decision page and the resolve PR. Tests.
+3. watch.py: re-evaluate assumptions (requirements, prices from providers.yaml, new models from the providers' model lists, real call volume from neatlogs traces when the token is set) and re-open any decision whose assumption changed, putting failure-bank cases first. With --auto-check, queue a check (respect quotas and --max-cost). Report: "re-opened #21: 'data region: any' broken by 'EU only'". Tests.
+4. scan.py: audit the repo and print the debt score (unchecked / claims false / assumptions expired), plus a table of decisions behind each count and next command for each. Also show it on the UI overview. Tests.
+5. Full suite. Update ARCHITECTURE.md and docs/screenshots (the debt score should now appear on the overview page; the demo graph has no requirements, so just overview + decision #21). Stage, write msg.txt (no Co-Authored-By line), don't commit.
+</pasted_content id="359c">
+
+-
+
+<pasted_content id="359c">
+Build "intent capture" so requests, bugs and ideas are never lost to context compaction:
+1. Graph: new node type `item` (kind: feature | bug | idea | limitation | user_action; status: open | in_progress | done | dropped). Dropping requires a reason ("no decision without a why"). Link items to decisions / code / requirements (affects, serves). Store source: quote, who said it (user | agent), session/checkpoint link, timestamp.
+2. Capture from the user: in the existing UserPromptSubmit hook, a regex pre-filter ("add", "we should", "also", "later", "broken", "bug", "doesn't work", "crash", "feature") then the same fast Groq confirmation pattern as Pivot Check; extract 0..n items. Must stay fast and fail-open; never block the prompt.
+3. Capture from the agent: a Stop hook reads the agent's last message and catches "found, not fixed", "known issue", "known limitation", "TODO", "not implemented", "skipped", "left for later", "out of scope" -> limitation/bug items with the quote.
+4. Dedup: before adding, compare with open items (normalized text + cheap similarity); merge instead of duplicating, keeping both sources.
+5. Bring them back: UserPromptSubmit additionalContext adds at most 3 open items relevant to the prompt (match by linked code/decision/keywords); the Stop hook adds "open from this session: …" when items raised in this session are still open. Never more than 4 lines total with the existing briefing.
+6. Close the loop: when a commit/checkpoint touches an item's linked code and tests pass, mark it "done?" (candidate) and ask; `notbydefault todo done <id>` / `todo drop <id> --reason`.
+7. CLI: `notbydefault todo [list|add|done|drop|show]` with filters; UI: an "Open items" board (by status and kind, linked to graph nodes) and a count on the overview.
+8. neatlogs: span per capture with focus_area=context and nbd.items_captured.
+9. Eval: write 20 cases (prompts and agent messages, with expected items) BEFORE tuning; report capture recall/precision and false captures on ordinary prompts, plus held-out cases.
+10. Seed the graph of the real repo (not demo-app) with this backlog via `todo add`:
+UI web interface (in progress); claim check + assumption watch + debt score in scan (in progress); MCP server + install --agent + token-savings measurement; requirement change auto re-opens tests; scan as retroactive git-history audit; early elimination in fit check; agent_reason from Entire session transcript; resolve held-out confirmation; test scout wired into resolve; import-traces from neatlogs; resolve polish (demo-app tests, --live run, verifier wrapper, outside-client, python-without-neatlogs message); bug: held-out pivot hd-piv-dynamo; bug: due_dates_present misses follow-up-sentence dates; user: cfo.ai Ari business plan; user: connect repo on entire.io; user: neatlogs detections + alerts; user: report neatlogs spend recomputation; user: label 21; docs: ARCHITECTURE.md + README; docs: X posts; docs: demo video; submission Monday 19:00-23:55 IST.
+Tests for each part (no network). Update ARCHITECTURE.md. Stage, msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="359c">
+
+---
+
+go ahead
+
+---
+
+go ahead
+
+---
+
+go ahead
+
+---
+
+cool go ahead

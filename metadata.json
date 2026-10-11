@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4NWA1QB86CH0X97HPWDA7NX",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "ARCHITECTURE.md",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "docs/screenshots/overview-dark.png",
+    "docs/screenshots/overview-light.png",
+    "notbydefault/assumptions.py",
+    "notbydefault/claims.py",
+    "notbydefault/cli.py",
+    "notbydefault/fit/run.py",
+    "notbydefault/hooks/pre_tool.py",
+    "notbydefault/records.py",
+    "notbydefault/resolve.py",
+    "notbydefault/scan.py",
+    "notbydefault/ui/app.py",
+    "notbydefault/ui/data.py",
+    "notbydefault/ui/static/app.css",
+    "notbydefault/ui/templates/_claims.html",
+    "notbydefault/ui/templates/_decision_body.html",
+    "notbydefault/ui/templates/_overview_live.html",
+    "notbydefault/watch.py",
+    "scripts/ui_screenshots.py",
+    "tests/test_claims_watch.py",
+    "tests/test_scan.py",
+    "tests/test_ui.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 372,
+    "cache_creation_tokens": 914811,
+    "cache_read_tokens": 59214525,
+    "output_tokens": 239970,
+    "api_call_count": 189
+  }
+}
