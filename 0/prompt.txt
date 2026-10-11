@@ -1,0 +1,64 @@
+<pasted_content id="359c">
+Build `notbydefault ui` — a local web UI for the Decision Graph. This is what judges will see in the demo video, so it must look distinctive and polished, not like a generic admin dashboard.
+
+STACK: FastAPI + Jinja2 server-rendered pages + HTMX + Cytoscape.js (+ cytoscape-dagre layout). Vendor the JS files into notbydefault/ui/static/ (no CDN at runtime, no npm build step). Command: `python -m notbydefault ui --project <dir> [--port 8765] [--read-only]`. Bind 127.0.0.1 only. Opens the browser.
+
+DESIGN DIRECTION: "engineering notebook / audit receipts". Every decision reads like a receipt: what was chosen, by whom (agent tool call), why, and the evidence. Light mode = warm off-white paper, ink text; dark mode = graphite. Monospace for model names, IDs, numbers; a clean sans for prose. Status colours used sparingly and consistently: verified/reviewed = green, unreviewed = neutral, needs_review = amber, stale = red, pivot = violet. Toggle for dark/light (remember in localStorage, wrapped in try/catch). Works at 1280px and down to a laptop screen; no horizontal scroll.
+
+PAGES
+1. Overview: headline tiles (decisions caught, unreviewed, needs review, stale, fit checks run, monthly savings from recommendations — per-decision, never summed across different volume assumptions), a "latest activity" feed (hook interrupts, pivots, requirement changes, fit checks, resolves), and the one-line motto "no decision without a why".
+2. Decisions list: filterable by status/type; each row shows the choice, status pill, last evidence, and "chosen by default?" flag.
+3. Decision detail (the money page): the receipt — choice, reason, who/when, call site + affected code (from Entire Graph), the fit-check evidence table exactly as the CLI report shows it (setups, correct with CI, hard, F1, verifier pass, both judges, latency, cost/call, monthly, fits budget), recommendation(s), rejected alternatives with reasons, caveats/assumptions, failure-bank items, decision record link, resolve PR description + diff if one exists. Every claim links to its source: neatlogs trace ID (copy button + link), Entire checkpoint link (https://entire.io/gh/Mischa0099/notbydefault/commit/<sha>), results file.
+4. Graph: Cytoscape view of goal/requirement/constraint/decision/evidence/alternative/code/pivot nodes and depends_on/supported_by/rejects/affects/serves edges. Distinct shape+colour per node type, status colours on decisions. Click a node → side panel with its details and a link to its page. Filters by node type; "focus" mode that shows one decision's neighbourhood; highlight what a requirement makes stale/needs-review.
+5. Timeline: chronological pivots, requirement changes, decisions, fit checks and resolves, showing cause → effect (e.g. "requirement: EU data residency → #21 needs review").
+6. Evals: v1→v2→v3(→v4) tables from eval/results, held-out shown separately, simple bar comparisons (inline SVG, no chart library needed). Link trace IDs.
+7. Costs: render business/costs.md/csv with the ASSUMPTION labels visible.
+
+LIVE MODE (key demo moment): the UI polls graph.db (HTMX every 2s, or SSE) so when the Claude Code hook catches a decision in another window, the new decision appears in the activity feed and the graph node animates in. Must not lock the SQLite DB (read-only connections, short transactions).
+
+ACTIONS (disabled entirely with --read-only; read-only also hides any write buttons):
+- Mark a decision reviewed / add a reason.
+- Add a requirement (e.g. "data must stay in the EU") → runs the existing stale/needs_review logic and the UI shows what changed (this is a demo moment).
+- Run `resolve <id>` as DRY RUN only from the UI and show plan + diff; applying stays CLI-only.
+- Every action goes through the existing Python functions (no duplicated logic), is CSRF-safe (same-origin check + token), and is logged in the activity feed.
+
+SAFETY: Jinja autoescape everywhere; never render .env or secrets; only serve files from inside the project; no network calls from the UI except what existing functions do. Tests must never open demo-app/.notbydefault (use throwaway copies — the conftest guard already enforces this).
+
+TESTS: FastAPI TestClient for every page and action (incl. read-only blocks writes, CSRF rejection, escaping of a malicious decision reason, live-poll endpoint returns new nodes). Then use Playwright (Chromium is preinstalled; do NOT run playwright install) against a throwaway copy of demo-app to take screenshots of each page in light and dark into docs/screenshots/ — check them yourself and fix anything that looks off (overlaps, cut text, empty states).
+
+Run the full suite. Stage everything, write msg.txt (no Co-Authored-By line). Don't commit. Tell me the exact command to launch it on demo-app.
+</pasted_content id="359c">
+
+---
+
+Your claude.ai usage limit has reset. Continue the task you were working on when the limit was reached; do not repeat work that is already complete.
+
+---
+
+<pasted_content id="359c">
+Your last response was cut off after writing notbydefault/ui/__init__.py and notbydefault/ui/mdlite.py. Continue the UI build from where you stopped. First check what files exist under notbydefault/ui/ and tests/ so you don't redo or overwrite finished work.
+To avoid being cut off again, work in small steps and stop after each one with a one-line status:
+1. data layer (read-only queries over graph.db, results, eval results, costs)
+2. app + base template + static assets (vendored JS) + Overview page
+3. Decisions list + Decision detail
+4. Graph page
+5. Timeline + Evals + Costs
+6. Live polling
+7. Actions (with --read-only and CSRF)
+8. Tests, then Playwright screenshots
+Write each file in pieces of at most ~150 lines (create, then append with Edit). Do step 1 now.
+</pasted_content id="359c">
+
+---
+
+<pasted_content id="359c">
+Build "claim check" and "watched assumptions":
+1. Claims: take the agent's stated reason for a decision (from the hook's recorded reason or the Entire session transcript) and split it into typed claims: cost, quality-on-task, latency, compliance/region, maturity, popularity. Use one cheap model call to classify, with a deterministic keyword fallback. Map each to a check we already have: cost → list price × volume vs budget; quality → fit-check results; latency → measured; region → service_facts.yaml; popularity → always "not evidence for your project". Verdict per claim: true / false / untested, each with its source (trace id, results file, fact URL). Show it as a "claim check" block in the check report, the decision record, the UI decision page and the resolve PR. Add `notbydefault claims <id>`.
+2. Assumptions: every decision stores the assumptions its verdict relied on (volume, budget, prices + fetched date, data region, model list, requirements in force), each with a source. Add `notbydefault watch`: re-evaluate them (requirements, prices from providers.yaml, new models from the providers' model lists, real call volume from neatlogs traces when available) and re-open any decision whose assumption changed, putting its failure-bank cases first. With --auto-check, queue a check (respect quotas and --max-cost). Report "re-opened #21: assumption 'data region: any' broken by requirement 'EU only'".
+3. Debt score in `scan` and the UI overview: decisions unchecked / claims false / assumptions expired.
+Tests for each, no network in tests. Stage, msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="359c">
+
+---
+
+go ahead with step 3 and continue with all the othe steps till step 8
