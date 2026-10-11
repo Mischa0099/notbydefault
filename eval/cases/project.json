@@ -1,0 +1,32 @@
+{
+  "_comment": "Base project for the pivot and requirements cases: a notes API like demo-app. Each case runs on a fresh throwaway copy. Decisions are referred to by `key` in the cases. Volume: 20,000 users x 30 calls/month = 600,000 model calls/month; budget $500/month.",
+  "files": {
+    "app.py": "from pymongo import MongoClient\nimport redis\n\ndb = MongoClient()['notes']\ncache = redis.Redis()\n",
+    "actions.py": "from openai import OpenAI\n\nclient = OpenAI(base_url='https://api.groq.com/openai/v1')\nMODEL = \"openai/gpt-oss-120b\"\n\ndef action_items(notes):\n    return client.chat.completions.create(model=MODEL, messages=[{'role': 'user', 'content': notes}])\n",
+    "summarize.py": "from openai import OpenAI\n\nclient = OpenAI(base_url='https://generativelanguage.googleapis.com/v1beta/openai')\n\ndef summarize(notes):\n    return client.chat.completions.create(model=\"gemini-3.1-flash-lite\", messages=[{'role': 'user', 'content': notes}])\n",
+    "reports.py": "from sqlalchemy import create_engine, text\n\nengine = create_engine('sqlite:///reports.db')\n",
+    "requirements.txt": "pymongo\nredis\nopenai\nsqlalchemy\n"
+  },
+  "context": [
+    {"type": "goal", "label": "A notes API for a small team, MVP in 2 weeks", "data": {"key": "goal"}},
+    {"type": "requirement", "label": "Expected users: 20,000", "data": {"key": "users", "value": "20000"}},
+    {"type": "requirement", "label": "Calls per user per month: 30", "data": {"key": "calls_per_user", "value": 30}},
+    {"type": "constraint", "label": "Monthly budget: $500", "data": {"key": "budget", "value": "500"}},
+    {"type": "constraint", "label": "Team size: 2", "data": {"key": "team", "value": "2"}}
+  ],
+  "decisions": [
+    {"key": "mongodb", "label": "MongoDB", "kind": "service", "category": "database", "status": "unreviewed",
+     "evidence": "pymongo", "files": ["app.py", "requirements.txt"]},
+    {"key": "redis", "label": "Redis", "kind": "service", "category": "database", "status": "unreviewed",
+     "evidence": "redis", "files": ["app.py", "requirements.txt"]},
+    {"key": "openai_sdk", "label": "OpenAI", "kind": "service", "category": "ai-provider", "status": "unreviewed",
+     "evidence": "openai", "files": ["requirements.txt"]},
+    {"key": "gpt_oss_120b", "label": "openai/gpt-oss-120b", "kind": "model", "category": "ai-model", "status": "reviewed",
+     "evidence": "OpenAI model literal", "files": ["actions.py"],
+     "verdict_summary": "Keep openai/gpt-oss-120b on Groq for action items: it was the only setup with every hard case correct."},
+    {"key": "gemini_lite", "label": "gemini-3.1-flash-lite", "kind": "model", "category": "ai-model", "status": "unreviewed",
+     "evidence": "Google model literal", "files": ["summarize.py"]},
+    {"key": "sqlalchemy", "label": "SQLAlchemy", "kind": "service", "category": "orm", "status": "unreviewed",
+     "evidence": "sqlalchemy", "files": ["reports.py", "requirements.txt"]}
+  ]
+}

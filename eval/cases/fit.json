@@ -1,0 +1,8 @@
+{
+  "_comment": "Model fit cases read from a project's saved state (read-only; nothing is run). A case is final only when the decision has a judged results file; a run that stopped early (e.g. Gemini's daily quota) is pending, with its provisional verdict from the journal. Re-run `notbydefault eval --sections fit` after the check finishes to fill it in.",
+  "cases": [
+    {"id": "fit-21-action-items", "project": "demo-app", "decision_id": 21,
+     "needs": "the Gemini judge (gemini:gemini-3.8-flash); its free quota resets at midnight Pacific (12:30 IST)",
+     "resume": "python -m notbydefault check 21 --project demo-app"}
+  ]
+}

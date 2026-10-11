@@ -1,4 +1,4 @@
-"""python -m notbydefault init|show|install|check|label"""
+"""python -m notbydefault init|show|install|check|label|eval|..."""
 from __future__ import annotations
 
 import argparse
@@ -207,6 +207,16 @@ def cmd_pivot(args) -> int:
     return 0
 
 
+def cmd_eval(args) -> int:
+    from notbydefault.evals import SECTIONS, run
+    sections = [x.strip() for x in args.sections.split(",")] if args.sections else None
+    unknown = [x for x in sections or [] if x not in SECTIONS]
+    if unknown:
+        print(f"Unknown section(s) {unknown}; choose from {', '.join(SECTIONS)}")
+        return 1
+    return run(args.version, sections, Path(args.out).resolve() if args.out else None)
+
+
 # --- install --------------------------------------------------------------------
 
 HOOK_MARKER = "notbydefault"
@@ -352,6 +362,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", default=".", help="project dir (default: current dir)")
     p.add_argument("-n", type=int, default=10, help="outputs to label (default 10)")
     p.set_defaults(func=cmd_label)
+
+    p = sub.add_parser("eval", help="measure NotByDefault on cases with known right answers")
+    p.add_argument("--version", default="v1", help="results name: eval/results/<version>.json")
+    p.add_argument("--sections", help="comma-separated subset of detection,pivot,requirements,fit "
+                                      "(updates those sections in an existing results file)")
+    p.add_argument("--out", help="results file (default eval/results/<version>.json)")
+    p.set_defaults(func=cmd_eval)
 
     args = parser.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):   # model text can hold characters cp1252 lacks
