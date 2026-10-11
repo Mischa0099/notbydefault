@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pill, file %}
+{% block title %}#{{ n.id }} {{ n.type }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">{{ n.type }} · #{{ n.id }}</div>
+    <h1>{{ n.label }}</h1>
+    <p>Recorded {{ n.created_at|when }}{% if n.session_id %} in session <code>{{ n.session_id }}</code>{% endif %}</p>
+  </div>
+  <a class="btn" href="/graph?focus={{ n.id }}">Show in graph</a>
+</div>
+<div class="grid-2">
+  <section class="receipt">
+    <h2>Recorded fields</h2>
+    {% if fields %}<dl class="kv">{% for k, v in fields %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>{% else %}<p class="muted">No fields.</p>{% endif %}
+    {% if path_link %}<hr><p>File: {{ file(path_link) }}</p>{% endif %}
+    {% if impacts %}
+    <hr><h3>What this made stale or needs-review</h3>
+    <ul class="plain">{% for d, st in impacts %}<li>{{ pill(st) }} <a href="/decisions/{{ d.id }}">#{{ d.id }} {{ d.label }}</a></li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+  <section class="sheet">
+    <h2>Edges</h2>
+    {% if out or into %}
+    <ul class="plain edges">
+      {% for m in out %}<li><span class="tag">{{ m.edge_type }} →</span> <a href="/nodes/{{ m.id }}">#{{ m.id }} {{ m.label }}</a> <span class="muted small">{{ m.type }}</span></li>{% endfor %}
+      {% for m in into %}<li><span class="tag">← {{ m.edge_type }}</span> <a href="/nodes/{{ m.id }}">#{{ m.id }} {{ m.label }}</a> <span class="muted small">{{ m.type }}</span></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">Not connected to anything yet.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

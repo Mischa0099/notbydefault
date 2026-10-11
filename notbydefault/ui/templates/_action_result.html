@@ -1,0 +1,22 @@
+{% from "_macros.html" import pill, trace, file %}
+<div class="result{{ '' if ok else ' err' }}" role="status">
+  <b>{{ title }}</b>
+  {% if lines %}<ul class="plain small">{% for l in lines %}<li>{{ l }}</li>{% endfor %}</ul>{% endif %}
+  {% if record %}<div class="small">Record updated: {{ file(record) }}</div>{% endif %}
+  {% if changed is defined %}
+    {% if changed %}
+    <div class="eyebrow" style="margin-top:10px">What changed</div>
+    <ul class="plain changed">
+      {% for d, was, now in changed %}
+      <li><a href="/decisions/{{ d.id }}" class="mono">#{{ d.id }} {{ d.label }}</a> {{ pill(was) }} <span class="arrow">→</span> {{ pill(now) }}
+        <div class="small muted">{{ d.data.stale_reason if now == "stale" else d.data.review_reason }}</div></li>
+      {% endfor %}
+    </ul>
+    {% elif ok %}<p class="small">No decision conflicts with it.</p>{% endif %}
+    {% if rid %}<p class="small"><a href="/graph?req={{ rid }}">See its impact in the graph →</a></p>{% endif %}
+  {% endif %}
+  {% if diff %}<div class="eyebrow" style="margin-top:10px">Diff (not applied)</div>{{ diff|diff }}{% endif %}
+  {% if report %}<details class="small"><summary>Full CLI output</summary><pre class="code wrap">{{ report }}</pre></details>{% endif %}
+  {% if trace_id %}<div class="small">{{ trace(trace_id) }}</div>{% endif %}
+  {% if reload %}<p class="small"><a href="{{ reload }}">Reload the receipt →</a></p>{% endif %}
+</div>

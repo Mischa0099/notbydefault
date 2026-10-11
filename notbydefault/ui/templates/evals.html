@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% from "_macros.html" import trace %}
+{% block title %}Evals{% endblock %}
+{% macro fmt(v, rate) -%}
+{%- if v is none -%}<span class="muted">-</span>{%- elif rate -%}{{ "%.0f%%"|format(v * 100) }}{%- elif v is float -%}{{ "%.2f"|format(v) }}{%- else -%}{{ v }}{%- endif -%}
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">eval/results · measuring NotByDefault itself</div>
+    <h1>Evals, version by version</h1>
+    <p>Original cases are comparable across versions; held-out cases were written after the fixes and are shown separately.</p>
+  </div>
+</div>
+{% if ev.columns %}
+<div class="grid-3 eval-bars">
+  {% for s in ev.sections %}
+  <figure class="sheet bars">
+    <figcaption><b>{{ s.name }}</b> <span class="small muted">cases passed</span></figcaption>
+    <svg viewBox="0 0 236 {{ 22 * ev.columns|length + 6 }}" width="100%" role="img" aria-label="{{ s.name }}: share of cases passed per version">
+      {% for c in ev.columns %}{% set y = 4 + loop.index0 * 22 %}{% set r = s.passed[loop.index0] %}
+      <text x="0" y="{{ y + 13 }}" class="bar-label">{{ c.name }}</text>
+      <rect x="76" y="{{ y + 2 }}" width="120" height="14" rx="3" class="bar-track"/>
+      {% if r is not none %}<rect x="76" y="{{ y + 2 }}" width="{{ (120 * r)|round(1) }}" height="14" rx="3" class="bar {{ 'held' if c.heldout }}"/>
+      <text x="202" y="{{ y + 13 }}" class="bar-value">{{ "%.0f%%"|format(r * 100) }}</text>{% else %}<text x="202" y="{{ y + 13 }}" class="bar-value muted-fill">–</text>{% endif %}
+      {% endfor %}
+    </svg>
+  </figure>
+  {% endfor %}
+</div>
+
+{% for s in ev.sections %}
+<div class="section-title"><h2>{{ s.name }}</h2><span class="src">eval/cases/{{ s.name }}.json · eval/cases/heldout/</span></div>
+<div class="table-wrap"><table class="evals">
+  <thead><tr><th>metric</th>{% for c in ev.columns %}<th class="num{{ ' held' if c.heldout }}">{{ c.name }}</th>{% endfor %}</tr></thead>
+  <tbody>
+    {% for r in s.rows %}
+    <tr><td>{{ r.metric }}{% if r.lower_better %} <span class="muted small">(lower is better)</span>{% endif %}</td>
+      {% for val in r["values"] %}<td class="num{{ ' held' if ev.columns[loop.index0].heldout }}">{{ fmt(val, r.rate) }}</td>{% endfor %}</tr>
+    {% endfor %}
+    <tr><td>trace id</td>{% for t in s.traces %}<td class="num{{ ' held' if ev.columns[loop.index0].heldout }}">{% if t %}<a class="mono small" href="{{ trace_url(t) }}" target="_blank" rel="noopener noreferrer" title="{{ t }}">{{ t[:8] }}…</a> <button class="btn small copy" type="button" data-copy="{{ t }}" aria-label="Copy trace id {{ t }}">copy</button>{% else %}<span class="muted">-</span>{% endif %}</td>{% endfor %}</tr>
+  </tbody>
+</table></div>
+{% endfor %}
+
+<div class="section-title"><h2>Remaining failures in {{ ev.last }}</h2><span class="src">eval/results/{{ ev.last }}.json</span></div>
+{% if ev.failures %}
+<ul class="ruled small">{% for f in ev.failures %}<li><span class="tag">{{ f.section }}</span>{% if f.split == "heldout" %} <span class="tag">held-out</span>{% endif %} <code>{{ f.case }}</code>{% if f.decision %} / {{ f.decision }}{% endif %}: {{ f.reason }}</li>{% endfor %}</ul>
+{% else %}<div class="empty"><b>No failures</b></div>{% endif %}
+<p class="small muted">Runs: {% for c in ev.columns if not c.heldout %}{{ c.name }} {{ c.run_at|when }} ({{ c.commit or "-" }}){{ ", " if not loop.last }}{% endfor %}</p>
+{% else %}
+<div class="empty"><b>No eval results</b>Run <code>python -m notbydefault eval --version v1</code>.</div>
+{% endif %}
+{% endblock %}

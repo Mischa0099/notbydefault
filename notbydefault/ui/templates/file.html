@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ rel }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Source file · read-only</div>
+    <h1 class="mono" style="font-size:1.2rem;overflow-wrap:anywhere">{{ rel }}</h1>
+    {% if truncated %}<p>Showing the first 512 KB.</p>{% endif %}
+  </div>
+  <button class="btn copy" type="button" data-copy="{{ rel }}">copy path</button>
+</div>
+{% if markdown %}
+<article class="receipt prose">{{ text|md }}</article>
+{% else %}
+<pre class="code">{{ text }}</pre>
+{% endif %}
+{% endblock %}

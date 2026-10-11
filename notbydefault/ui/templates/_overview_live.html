@@ -1,0 +1,37 @@
+{% from "_macros.html" import feed %}
+<div id="overview-live" hx-get="/fragments/overview?v={{ version }}" hx-trigger="every 2s" hx-swap="outerHTML">
+<section class="tiles" aria-label="Headline numbers">
+  <a class="tile ink" href="/decisions"><div class="n">{{ ov.decisions }}</div><div class="l">decisions caught</div><div class="sub">{{ ov.by_default }} chosen by default</div></a>
+  <a class="tile{{ ' zero' if not ov.count.unreviewed }}" href="/decisions?status=unreviewed"><div class="n">{{ ov.count.unreviewed }}</div><div class="l">unreviewed</div><div class="sub">no fit check yet</div></a>
+  <a class="tile warn{{ ' zero' if not ov.count.needs_review }}" href="/decisions?status=needs_review"><div class="n">{{ ov.count.needs_review }}</div><div class="l">needs review</div><div class="sub">may conflict with a requirement</div></a>
+  <a class="tile bad{{ ' zero' if not ov.count.stale }}" href="/decisions?status=stale"><div class="n">{{ ov.count.stale }}</div><div class="l">stale</div><div class="sub">provably conflicts</div></a>
+  <a class="tile ok{{ ' zero' if not ov.checks }}" href="/timeline"><div class="n">{{ ov.checks }}</div><div class="l">fit checks run</div><div class="sub">results files</div></a>
+  <a class="tile ok{{ ' zero' if not ov.savings }}" href="/costs"><div class="n">{{ ov.savings|length }}</div><div class="l">savings found</div><div class="sub">per decision, see right</div></a>
+</section>
+<div class="grid-2">
+  <section class="sheet" aria-labelledby="h-activity">
+    <div class="section-title" style="margin-top:0"><h2 id="h-activity">Latest activity</h2><span class="src">hook.log · graph.db · results/ · live</span></div>
+    {{ feed(events) }}
+    <p class="small"><a href="/timeline">Full timeline →</a></p>
+  </section>
+  <aside class="receipt" aria-labelledby="h-savings">
+    <div class="eyebrow">Recommendations</div>
+    <h2 id="h-savings">Monthly savings, per decision</h2>
+    <p class="small muted">Each at the volume its own fit check assumed, so they are never added together.</p>
+    {% if ov.savings %}
+    <div class="savings">
+      {% for r in ov.savings %}
+      <div class="saving">
+        <a class="mono" href="/decisions/{{ r.decision_id }}">#{{ r.decision_id }}</a>
+        <span class="small"><code>{{ r.current_setup }}</code> → <code>{{ r.recommended_setup }}</code></span>
+        <span class="amt">{{ r.savings_monthly_usd|money }}/mo</span>
+        <span class="vol">{{ r.current_monthly_usd|money }} → {{ r.recommended_monthly_usd|money }} at {{ "{:,.0f}".format(r.assumed_users|float) }} users × {{ "{:g}".format(r.assumed_calls_per_user|float) }} calls/user/month <mark class="assume">ASSUMPTION</mark> · budget {{ r.budget_monthly_usd|money }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty"><b>No recommendations yet</b>Run <code>notbydefault check &lt;id&gt;</code> on a model decision.</div>
+    {% endif %}
+  </aside>
+</div>
+</div>

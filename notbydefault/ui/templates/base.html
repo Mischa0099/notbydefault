@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{ csrf }}">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "historyCacheSize": 0}'>
+<title>{% block title %}NotByDefault{% endblock %} · {{ project_name }}</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/theme.js"></script>
+{% block head %}{% endblock %}
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}' data-read-only="{{ 'true' if read_only else 'false' }}">
+<a class="sr-only" href="#main">Skip to content</a>
+<header class="masthead">
+  <div class="wrap">
+    <a class="brand" href="/"><b>NotBy<span>Default</span></b><small>{{ project_name }}</small></a>
+    {% set tabs = [("/", "Overview"), ("/decisions", "Decisions"), ("/graph", "Graph"), ("/timeline", "Timeline"), ("/evals", "Evals"), ("/costs", "Costs")] %}
+    <nav class="tabs" aria-label="Pages">
+      {% for href, label in tabs %}
+      <a href="{{ href }}"{% if (href == "/" and path == "/") or (href != "/" and path.startswith(href)) %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+    <div class="mast-tools">
+      {% if read_only %}<span class="ro-badge" title="Started with --read-only: actions are disabled">read-only</span>{% endif %}
+      <span class="live" id="live" title="Polling graph.db every 2s"><i></i>live</span>
+      <button class="btn icon-btn" id="theme-toggle" type="button" aria-label="Toggle dark mode">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 1.5v11a5.5 5.5 0 0 1 0-11Z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+<main class="wrap" id="main">
+{% block content %}{% endblock %}
+</main>
+<footer class="colophon"><div class="wrap">
+  <span class="motto">no decision without a why</span>
+  <span class="mono" title="{{ project }}">{{ project }}</span>
+</div></footer>
+<script src="/static/vendor/htmx.min.js"></script>
+<script src="/static/app.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

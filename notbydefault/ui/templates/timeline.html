@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pill, trace %}
+{% block title %}Timeline{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Chronology</div>
+    <h1>Cause → effect</h1>
+    <p>Decisions caught, hook interrupts, requirement changes, pivots, fit checks and resolves, oldest first.</p>
+  </div>
+  <div class="legend-kinds small">
+    {% for k, label in [("caught","caught"),("hook","hook"),("requirement","requirement"),("pivot","pivot"),("fit_check","fit check"),("resolve","resolve"),("ui","you")] %}
+    <span class="lk k-{{ k }}"><i></i>{{ label }}</span>
+    {% endfor %}
+  </div>
+</div>
+{% if days %}
+{% for day, items in days %}
+<section class="day">
+  <h2 class="day-head">{{ day }}</h2>
+  <ol class="tl">
+    {% for e in items %}
+    <li class="tl-item k-{{ e.kind }}">
+      <time class="tl-time mono" datetime="{{ e.at.isoformat() }}">{{ e.at.astimezone().strftime("%H:%M") }}</time>
+      <div class="tl-card">
+        <div class="tl-kind">{{ e.kind|kind_text }}{% if e.via_ui %} · from the UI{% endif %}</div>
+        <div class="tl-title">{% if e.href %}<a href="{{ e.href }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</div>
+        {% if e.detail %}<div class="small tl-detail">{{ e.detail }}</div>{% endif %}
+        {% if e.effects and e.kind in ("requirement", "pivot", "ui") %}
+        <div class="cause-effect">
+          <span class="cause">{{ e.kind|kind_text }}: {{ e.title.split(": ", 1)[-1] }}</span>
+          <span class="arrow" aria-label="caused">→</span>
+          <span class="effects">{% for f in e.effects %}<a class="effect" href="{{ f.href }}">{{ f.label }} {{ pill(f.status) }}</a>{% endfor %}</span>
+        </div>
+        {% endif %}
+        {% if e.trace_id %}<div class="effects">{{ trace(e.trace_id) }}</div>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+{% endfor %}
+{% else %}
+<div class="empty"><b>Nothing has happened yet</b>Events appear here as the hook catches decisions and checks run.</div>
+{% endif %}
+{% endblock %}

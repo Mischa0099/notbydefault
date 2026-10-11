@@ -1,0 +1,32 @@
+{% macro pill(status) -%}
+<span class="pill s-{{ status }}">{{ status|status_text }}</span>
+{%- endmacro %}
+
+{% macro trace(trace_id, url=None) -%}
+{% if trace_id %}<span class="trace"><span class="tag">neatlogs</span><code>{{ trace_id }}</code><button class="btn small copy" type="button" data-copy="{{ trace_id }}" aria-label="Copy trace id {{ trace_id }}">copy</button>{% if url %}<a href="{{ url }}" target="_blank" rel="noopener noreferrer" class="small">open ↗</a>{% endif %}</span>{% else %}<span class="muted">no trace</span>{% endif %}
+{%- endmacro %}
+
+{% macro file(rel, label=None) -%}
+{% if rel %}<a class="mono small" href="/files/{{ rel }}">{{ label or rel }}</a>{% else %}<span class="muted">-</span>{% endif %}
+{%- endmacro %}
+
+{% macro feed(events, empty_text="Run the agent with the hook installed; decisions appear here as they are caught.") -%}
+{% if events %}
+<ol class="feed">
+{% for e in events %}
+  <li class="k-{{ e.kind }}" data-key="{{ e.key }}">
+    <span class="dot" aria-hidden="true"></span>
+    <div class="meta"><span>{{ e.kind|kind_text }}</span><span title="{{ e.at|when }}">{{ e.at|ago }}</span>{% if e.via_ui %}<span class="tag">from the UI</span>{% endif %}</div>
+    <div class="title">{% if e.href %}<a href="{{ e.href }}">{{ e.title }}</a>{% else %}{{ e.title }}{% endif %}</div>
+    {% if e.detail %}<div class="detail">{{ e.detail }}</div>{% endif %}
+    {% if e.effects and e.kind in ("requirement", "pivot", "ui") %}
+    <div class="effects"><span class="arrow" aria-hidden="true">→</span>{% for f in e.effects %}<a class="effect" href="{{ f.href }}">{{ pill(f.status) }}{{ f.label }}</a>{% endfor %}</div>
+    {% endif %}
+    {% if e.trace_id %}<div class="effects">{{ trace(e.trace_id) }}</div>{% endif %}
+  </li>
+{% endfor %}
+</ol>
+{% else %}
+<div class="empty"><b>No activity yet</b>{{ empty_text }}</div>
+{% endif %}
+{%- endmacro %}

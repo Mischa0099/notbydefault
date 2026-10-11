@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Graph{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Decision Graph</div>
+    <h1>What depends on what</h1>
+    <p>Each decision, then its evidence, then the requirements and goal it relies on. Tick <b>code</b> and <b>alternative</b> to see more; focus on one decision to see everything around it. Click a node for details, double-click for its page.</p>
+  </div>
+  <div class="row graph-tools">
+    <label class="small">Focus
+      <select id="focus-select" class="field-inline" aria-label="Focus on one decision">
+        <option value="">whole graph</option>
+        {% for d in decisions %}<option value="{{ d.id }}">#{{ d.id }} {{ d.label }}</option>{% endfor %}
+      </select></label>
+    <label class="small">Requirement impact
+      <select id="req-select" class="field-inline" aria-label="Highlight what a requirement affects">
+        <option value="">none</option>
+        {% for r in reqs %}<option value="{{ r.id }}">#{{ r.id }} {{ r.label[:48] }}</option>{% endfor %}
+      </select></label>
+    <button class="btn small" id="fit-btn" type="button">Fit to screen</button>
+  </div>
+</div>
+<div class="type-filters" role="group" aria-label="Show node types">
+  {% for t in types %}
+  <label class="tf tf-{{ t }}"><input type="checkbox" value="{{ t }}"{% if t not in ("alternative", "code") %} checked{% endif %}> <i aria-hidden="true"></i>{{ t }}</label>
+  {% endfor %}
+  <span class="legend small muted">decision colour = status:
+    <span class="pill s-unreviewed">unreviewed</span> <span class="pill s-reviewed">reviewed</span>
+    <span class="pill s-needs_review">needs review</span> <span class="pill s-stale">stale</span></span>
+</div>
+<div class="graph-layout">
+  <div class="graph-box">
+    <div id="cy" aria-label="Decision graph canvas" role="img"></div>
+    {% if empty %}<div class="empty graph-empty"><b>The graph is empty</b>Run <code>notbydefault init</code> and let the hook catch a decision.</div>{% endif %}
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </div>
+  <aside class="sheet panel" id="panel" aria-live="polite">
+    <div class="eyebrow">Selected node</div>
+    <p class="muted small">Click a node to see its details here.</p>
+    <dl class="kv small edge-key">
+      <dt>depends_on</dt><dd>needs a requirement / constraint</dd>
+      <dt>serves</dt><dd>works towards a goal</dd>
+      <dt>supported_by</dt><dd>backed by evidence</dd>
+      <dt>rejects</dt><dd>alternative turned down</dd>
+      <dt>affects</dt><dd>code it touches</dd>
+    </dl>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/cytoscape.min.js"></script>
+<script src="/static/vendor/dagre.min.js"></script>
+<script src="/static/vendor/cytoscape-dagre.js"></script>
+<script src="/static/graph.js"></script>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% from "_macros.html" import pill %}
+{% if n %}
+<div class="eyebrow">{{ n.type }} · #{{ n.id }}</div>
+<h2 class="panel-title">{{ n.label }}</h2>
+{% if n.type == "decision" %}
+<div class="head-flags">{{ pill(status) }}</div>
+<p class="small">{{ why }}</p>
+{% endif %}
+{% if impacts %}
+<h3>Made stale / needs review</h3>
+<ul class="plain small">{% for d, st in impacts %}<li>{{ pill(st) }} <a href="/decisions/{{ d.id }}">#{{ d.id }} {{ d.label }}</a></li>{% endfor %}</ul>
+{% endif %}
+{% if fields %}
+<dl class="kv small">{% for k, v in fields %}<dt>{{ k }}</dt><dd>{{ v }}</dd>{% endfor %}</dl>
+{% endif %}
+{% if out or into %}
+<h3>Edges</h3>
+<ul class="plain small">
+  {% for m in out[:12] %}<li><span class="tag">{{ m.edge_type }} →</span> #{{ m.id }} {{ m.label }}</li>{% endfor %}
+  {% for m in into[:12] %}<li><span class="tag">← {{ m.edge_type }}</span> #{{ m.id }} {{ m.label }}</li>{% endfor %}
+</ul>
+{% endif %}
+<p><a class="btn small" href="{{ '/decisions/' if n.type == 'decision' else '/nodes/' }}{{ n.id }}">Open {{ "receipt" if n.type == "decision" else "page" }} →</a></p>
+{% else %}
+<p class="muted">That node no longer exists.</p>
+{% endif %}

@@ -71,6 +71,10 @@ def why_text(d: dict) -> str:
         return data.get("stale_reason") or "marked stale"
     if data.get("status") == "needs_review":
         return data.get("review_reason") or "needs review"
+    if data.get("reason"):
+        given = f"{data['reason']} (reason given by a person, {str(data.get('reason_at'))[:10]})"
+        return given + (f" Fit check: {data['verdict_summary']}" if data.get("verdict_summary")
+                        else "")
     if data.get("verdict_summary"):
         return data["verdict_summary"]
     how = f" ({data.get('evidence')})" if data.get("evidence") else ""
@@ -173,6 +177,24 @@ def write_record(project: Path, graph, decision_id: int, event: str | None = Non
     path.write_text(text, encoding="utf-8")
     graph.update_data(decision_id, decision_record=_rel(path, project))
     return path
+
+
+def review(project: Path, graph, decision_id: int, reason: str = "",
+           mark_reviewed: bool = True) -> Path:
+    """A person reviewed a decision and/or gave its reason: stored on the node, then written
+    to its record (no Brain call). Returns the record's path."""
+    d = graph.get_node(decision_id)
+    if d is None or d["type"] != "decision":
+        raise KeyError(decision_id)
+    reason = " ".join(reason.split())
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    fields = {"reason": reason, "reason_at": now} if reason else {}
+    if mark_reviewed:
+        fields.update(status="reviewed", reviewed_at=now, reviewed_by="person",
+                      status_before_person_review=d["data"].get("status"))
+    graph.update_data(decision_id, **fields)
+    event = ("reviewed by a person" if mark_reviewed else "reason added by a person")         + (f": {reason}" if reason else "")
+    return write_record(project, graph, decision_id, event)
 
 
 def write_records(project: Path, graph, decision_ids, event: str, tracer=None,

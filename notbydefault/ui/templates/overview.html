@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Overview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Decision Graph · {{ project_name }}</div>
+    <h1>Every stack choice, with a receipt.</h1>
+    <p class="motto">no decision without a why</p>
+  </div>
+  {% if ov.goal %}<p class="small">Goal: <b>{{ ov.goal }}</b></p>{% endif %}
+</div>
+{% include "_overview_live.html" %}
+{% if not read_only %}
+<section class="sheet require" aria-labelledby="h-require">
+  <div class="section-title" style="margin-top:0"><h2 id="h-require">Add a requirement</h2><span class="src">runs <code>notbydefault require</code>: every decision is judged against it</span></div>
+  <form hx-post="/requirements" hx-target="#require-result" hx-swap="innerHTML" hx-indicator="#require-busy" method="post" action="/requirements">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <div class="row">
+      <input class="field" id="req-text" name="text" type="text" maxlength="2000" required placeholder="e.g. Customer data must stay in the EU" aria-label="New requirement">
+      <button class="btn primary" type="submit">Add &amp; check decisions</button>
+    </div>
+    <span id="require-busy" class="busy small muted">Judging every decision against it…</span>
+  </form>
+  <div id="require-result" aria-live="polite"></div>
+</section>
+{% endif %}
+{% endblock %}

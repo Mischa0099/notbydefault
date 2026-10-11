@@ -1,0 +1,59 @@
+{% from "_macros.html" import pill, trace, file %}
+<div class="grid-2">
+  <section>
+    <div class="section-title"><h2>Rejected alternatives</h2><span class="src">graph: rejects edges</span></div>
+    {% if v.rejected %}
+    <ul class="ruled">
+      {% for a in v.rejected %}
+      <li><code>{{ a.label }}</code><div class="small">{{ a.data.reason or "no reason recorded" }}</div>
+        {% if a.data.rejected_by_check %}<div class="small muted">by {{ file(a.data.rejected_by_check) }}</div>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<div class="empty"><b>None recorded</b>A fit check records what it rejected and why.</div>{% endif %}
+  </section>
+  <section>
+    <div class="section-title"><h2>Caveats &amp; assumptions</h2><span class="src">{{ file(v.record, "decision record") }} · graph</span></div>
+    {% if v.caveats or v.assumption_notes or v.assumptions %}
+    <ul class="ruled small">
+      {% for c in v.caveats %}<li><span class="tag">caveat</span> {{ c }}</li>{% endfor %}
+      {% for n in v.assumptions %}<li><mark class="assume">ASSUMPTION</mark> <a href="/nodes/{{ n.id }}">#{{ n.id }}</a> {{ n.label }}</li>{% endfor %}
+      {% for a in v.assumption_notes %}<li>{{ a|md(0) }}</li>{% endfor %}
+    </ul>
+    {% else %}<div class="empty"><b>None recorded</b></div>{% endif %}
+  </section>
+</div>
+
+<div class="section-title"><h2>Failure bank</h2><span class="src">{% if v.failures_file %}{{ file(v.failures_file) }} · {{ v.failures_total }} output(s), run first next time{% else %}empty{% endif %}</span></div>
+{% if v.failures %}
+<div class="table-wrap"><table>
+  <thead><tr><th>model</th><th>failed checks</th><th>why</th><th>when</th></tr></thead>
+  <tbody>{% for b in v.failures|reverse %}
+    <tr><td class="mono small">{{ b.model }}</td><td class="small">{{ (b.failed or [])|join(", ") }}</td>
+      <td class="small">{{ (b.reasons or [""])[0] }}</td><td class="mono small">{{ b.at|when }}</td></tr>
+  {% endfor %}</tbody>
+</table></div>
+{% else %}<div class="empty"><b>No failing outputs banked</b>Failing outputs from fit checks are kept here and re-run first.</div>{% endif %}
+
+<div class="section-title"><h2>Resolve</h2><span class="src">{% if v.pr_file %}{{ file(v.pr_file) }}{% else %}<code>notbydefault resolve {{ d.id }}</code>{% endif %}</span></div>
+<div id="resolve-result"></div>
+{% if v.resolution %}
+<div class="receipt">
+  <dl class="kv small">
+    <dt>Switched</dt><dd><code>{{ v.resolution.from }}</code> → <code>{{ v.resolution.to }}</code></dd>
+    <dt>Branch</dt><dd><code>{{ v.resolution.branch }}</code> · {{ v.resolution.at|when }}</dd>
+    <dt>Tests</dt><dd>{{ v.resolution.tests }} · verifiers {{ v.resolution.verifiers }}</dd>
+    <dt>Trace</dt><dd>{{ trace(v.resolution.trace_id) }}</dd>
+  </dl>
+  {% if v.pr %}<hr><div class="prose">{{ v.pr|md }}</div>{% endif %}
+  {% if v.resolve_diff %}<hr><div class="eyebrow">Diff on {{ v.resolution.branch }}</div>{{ v.resolve_diff|diff }}{% endif %}
+</div>
+{% elif v.failed_patch %}
+<p class="small">The last resolve failed and was rolled back; the undone diff is in {{ file(v.failed_patch) }}.</p>
+{% else %}
+<p class="muted small">Not resolved yet.{% if not read_only and data.kind == "model" %} Use “Resolve: dry run” above to see the plan and diff without changing anything; applying stays in the CLI (<code>resolve {{ d.id }} --apply</code>).{% endif %}</p>
+{% endif %}
+
+{% if v.history %}
+<div class="section-title"><h2>Status history</h2><span class="src">graph: decision history</span></div>
+<ol class="history">{% for h in v.history %}<li><span class="mono small">{{ h.at|when }}</span> {{ pill(h.status) }} <span class="small">{{ h.event }}</span></li>{% endfor %}</ol>
+{% endif %}

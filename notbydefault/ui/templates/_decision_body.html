@@ -1,0 +1,78 @@
+{% from "_macros.html" import pill, trace, file %}
+<div class="section-title"><h2>Call site &amp; affected code</h2><span class="src">Entire Graph · {{ v.affected_source or "touched files" }}{% if data.affected_at %} · {{ data.affected_at|when }}{% endif %}</span></div>
+<div class="grid-2">
+  <div class="table-wrap">
+    {% if v.affected %}
+    <table>
+      <thead><tr><th>location</th><th>symbol</th><th>how</th></tr></thead>
+      <tbody>
+      {% for e in v.affected %}
+        <tr><td class="mono small">{{ file(e.path, e.path ~ (":" ~ e.line if e.line else "")) }}</td>
+            <td class="mono small">{{ e.symbol or "-" }}{% if e.depth %} <span class="tag">caller</span>{% endif %}</td>
+            <td class="small">{{ e.via }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="empty"><b>No code recorded</b>Run <code>notbydefault affected {{ d.id }}</code>.</div>{% endif %}
+  </div>
+  <div class="sheet">
+    {% if v.fit and v.fit.callsite.file %}
+    <div class="eyebrow">Call site the fit check tested</div>
+    <p class="mono">{{ file(v.fit.callsite.file, v.fit.callsite.file ~ ":" ~ v.fit.callsite.line) }}</p>
+    {% if v.fit.callsite.task %}<p class="small">{{ v.fit.callsite.task }}</p>{% endif %}
+    {% else %}<p class="muted small">No fit check has located a call site yet.</p>{% endif %}
+    {% if v.affected_note %}<p class="small muted">Note: {{ v.affected_note }}</p>{% endif %}
+  </div>
+</div>
+
+<div class="section-title"><h2>Fit-check evidence</h2>
+  <span class="src">{% if v.fit %}{{ file(v.fit.results) }} · run {{ v.fit.run_at|when }}{% else %}no fit check{% endif %}</span></div>
+{% if v.fit %}
+{% set f = v.fit %}
+<div class="table-wrap"><table class="fit">
+  <thead><tr>{% for h in f.table.headers %}<th{% if not loop.first %} class="num"{% endif %}>{{ h }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for r in f.table.rows %}
+    <tr class="{{ 'rec' if r.recommended }} {{ 'cur' if r.current }}">
+      {% for c in r.cells %}<td class="{{ 'num' if not loop.first }}{{ ' no' if c == 'NO' }}{{ ' yes' if c == 'yes' and loop.last }}">{{ c }}{% if loop.first %}{% if r.recommended %} <span class="pill ok">recommended</span>{% elif r.best %} <span class="pill ok">best quality</span>{% endif %}{% endif %}</td>{% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+<div class="grid-2" style="margin-top:16px">
+  <div class="receipt">
+    <div class="eyebrow">Recommendation</div>
+    {% if f.table.refs and f.verdict.recommended %}
+    <ol class="recs">
+      <li>Cheapest setup that meets the bar: <code>{{ f.verdict.recommended[0] }}{{ " + verifier" if f.verdict.recommended[1] != "alone" }}</code></li>
+      <li>Best quality within the budget: {% if f.verdict.best_quality %}<code>{{ f.verdict.best_quality[0] }}{{ " + verifier" if f.verdict.best_quality[1] != "alone" }}</code>{% else %}none fits the budget at this volume{% endif %}</li>
+    </ol>
+    {% endif %}
+    <p>{{ f.verdict.summary }}</p>
+    {% if f.verdict.bar %}<p class="small muted">Bar: {{ f.verdict.bar }}.</p>{% endif %}
+    {% if f.stopped %}<p class="pill bad">stopped early at --max-cost</p>{% endif %}
+    <hr>
+    <dl class="kv small">
+      <dt>Volume</dt><dd>{{ "{:,.0f}".format(f.assumptions.users or 0) }} users × {{ f.assumptions.calls_per_user }} calls/user/month <mark class="assume">ASSUMPTION</mark></dd>
+      <dt>Budget</dt><dd>{{ f.assumptions.budget|money }}/month</dd>
+      <dt>Judges</dt><dd class="mono">{{ f.judges|join(", ") }}{% if f.agreement and f.agreement.n %} · agree exactly {{ f.agreement.exact|pct }}, within 1 pt {{ f.agreement.within_1|pct }}{% endif %}</dd>
+      <dt>Verifiers</dt><dd>{{ file(f.verifiers) }} <span class="small muted">{{ f.checks|join(", ") }}</span></dd>
+      <dt>Prices</dt><dd class="small">{{ f.pricing_source }}{% if f.free_tier %} · <span class="tag">free tier: list-price estimates</span>{% endif %}</dd>
+      <dt>Spent</dt><dd class="mono">${{ "%.4f"|format(f.spent or 0) }} · {{ f.requests.made or 0 }} requests, {{ f.requests.cache_hits or 0 }} cache hits</dd>
+      <dt>Trace</dt><dd>{{ trace(f.trace_id, f.trace_url) }}</dd>
+    </dl>
+  </div>
+  <div class="sheet">
+    <div class="eyebrow">Wrong answers per setup</div>
+    {% set any_fail = namespace(v=false) %}
+    {% for r in f.table.rows if r.failed_cases %}{% set any_fail.v = true %}
+      <p class="small"><b class="mono">{{ r.name }}</b></p>
+      <ul class="plain small">{% for case, probs in r.failed_cases.items() %}<li><code>{{ case }}</code> {{ probs[0] if probs else "" }}</li>{% endfor %}</ul>
+    {% endfor %}
+    {% if not any_fail.v %}<p class="muted small">No per-case failures recorded{{ " (no reference answers)" if not f.table.refs }}.</p>{% endif %}
+  </div>
+</div>
+{% else %}
+<div class="empty"><b>Not fit-tested</b>{% if data.kind == "model" %}Run <code>notbydefault check {{ d.id }}</code> to test it against the project's constraints.{% else %}Fit checks test model decisions; this one is a {{ data.kind }} decision.{% endif %}</div>
+{% endif %}
+{% include "_decision_tail.html" %}

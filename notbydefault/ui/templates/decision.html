@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pill, trace, file %}
+{% set d = v.d %}{% set data = v.data %}
+{% block title %}#{{ d.id }} {{ d.label }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Receipt · decision #{{ d.id }} · {{ data.kind or "?" }}/{{ data.category or "?" }}</div>
+    <h1 class="mono-title">{{ d.label }}</h1>
+    <div class="head-flags">{{ pill(v.status) }}
+      {% if v.by_default %}<span class="flag">chosen by default</span>{% else %}<span class="flag no">has a why</span>{% endif %}
+      {% if data.verdict %}<span class="pill {{ 'ok' if data.verdict == 'keep' else 'warn' if data.verdict == 'switch' else '' }}">verdict: {{ data.verdict }}</span>{% endif %}
+    </div>
+  </div>
+  <a class="btn" href="/graph?focus={{ d.id }}">Show neighbourhood in graph</a>
+</div>
+
+<div class="grid-2">
+  <article class="receipt" aria-labelledby="h-receipt">
+    <h2 id="h-receipt" class="sr-only">Receipt</h2>
+    <dl class="kv">
+      <dt>Chosen</dt><dd><code>{{ data.chosen or d.label }}</code>{% if data.openrouter_id and data.openrouter_id != data.chosen %} <span class="muted">as</span> <code>{{ data.openrouter_id }}</code>{% endif %}</dd>
+      <dt>By</dt><dd>{% if data.tool_name %}an agent's <b>{{ data.tool_name }}</b> tool call{% if data.tool_use_id %} <code class="small">{{ data.tool_use_id }}</code>{% endif %}{% else %}{{ data.source or "recorded by hand" }}{% endif %}</dd>
+      {% if data.command %}<dt>Command</dt><dd><code>{{ data.command }}</code></dd>{% endif %}
+      {% if data.file %}<dt>Seen in</dt><dd>{{ file(data.file) }}{% if data.evidence %} <span class="muted small">({{ data.evidence }})</span>{% endif %}</dd>{% endif %}
+      <dt>When</dt><dd>{{ d.created_at|when }}{% if data.times_seen and data.times_seen > 1 %} <span class="muted small">· seen {{ data.times_seen }}×</span>{% endif %}</dd>
+      {% if d.session_id %}<dt>Session</dt><dd><code class="small">{{ d.session_id }}</code></dd>{% endif %}
+    </dl>
+    <hr>
+    <div class="why">
+      <div class="eyebrow">Why</div>
+      <p class="why-text">{{ v.why }}</p>
+      {% if v.cause %}<p class="small">Caused by <a href="/nodes/{{ v.cause.id }}">#{{ v.cause.id }} {{ v.cause.type }}: {{ v.cause.label }}</a>
+        {% set src = data.stale_source if v.status == "stale" else data.review_source %}{% if src %} · source: {{ src }}{% endif %}</p>{% endif %}
+    </div>
+    <hr>
+    <dl class="kv sources">
+      <dt>Record</dt><dd>{{ file(v.record) }}</dd>
+      <dt>Checkpoint</dt><dd>{% if v.record_links and v.record_links.sha %}<a class="mono small" href="{{ v.record_links.link or '#' }}" target="_blank" rel="noopener noreferrer">{{ v.record_links.sha[:12] }} ↗</a>{% if v.record_links.checkpoint %} <span class="tag">checkpoint {{ v.record_links.checkpoint }}</span>{% endif %}{% elif v.record %}<span class="muted small">record not committed yet</span>{% else %}<span class="muted">-</span>{% endif %}</dd>
+      <dt>Results</dt><dd>{{ file(v.fit.results if v.fit else None) }}</dd>
+      <dt>Trace</dt><dd>{{ trace(v.fit.trace_id if v.fit else None, v.fit.trace_url if v.fit else None) }}</dd>
+    </dl>
+  </article>
+  <aside class="stack">
+    {% include "_decision_actions.html" %}
+    <section class="sheet">
+      <h2>Depends on</h2>
+      {% if v.depends %}
+      <ul class="plain">{% for n in v.depends %}<li><span class="tag">{{ n.edge_type }}</span> <a href="/nodes/{{ n.id }}">{{ n.label }}</a>{% if n.data.assumption %} <mark class="assume">ASSUMPTION</mark>{% endif %}</li>{% endfor %}</ul>
+      {% else %}<p class="muted small">No goal, requirement or constraint linked.</p>{% endif %}
+      {% if v.pivots %}<h3>Pivots</h3><ul class="plain">{% for p in v.pivots %}<li>{{ pill(p.data.status or "proposed") }} <a href="/nodes/{{ p.id }}">{{ p.label }}</a></li>{% endfor %}</ul>{% endif %}
+    </section>
+  </aside>
+</div>
+{% include "_decision_body.html" %}
+{% endblock %}

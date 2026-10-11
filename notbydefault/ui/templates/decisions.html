@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pill %}
+{% block title %}Decisions{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">Ledger</div>
+    <h1>Decisions</h1>
+    <p>{{ rows|length }} of {{ total }} shown. A decision is <span class="flag">by default</span> when an agent's tool call picked it and nobody recorded why.</p>
+  </div>
+</div>
+<form class="filters" method="get" action="/decisions" aria-label="Filter decisions">
+  <div class="seg" role="group" aria-label="Status">
+    <a href="/decisions{{ '?kind=' ~ kind if kind }}"{% if not status %} aria-current="true"{% endif %}>all</a>
+    {% for s in statuses %}
+    <a href="/decisions?status={{ s }}{{ '&kind=' ~ kind if kind }}"{% if status == s %} aria-current="true"{% endif %}><span class="pill s-{{ s }}">{{ s|status_text }}</span></a>
+    {% endfor %}
+  </div>
+  <div class="seg" role="group" aria-label="Type">
+    <a href="/decisions{{ '?status=' ~ status if status }}"{% if not kind %} aria-current="true"{% endif %}>any type</a>
+    {% for k in kinds %}
+    <a href="/decisions?kind={{ k }}{{ '&status=' ~ status if status }}"{% if kind == k %} aria-current="true"{% endif %}>{{ k }}</a>
+    {% endfor %}
+  </div>
+</form>
+{% if rows %}
+<ol class="ledger">
+  {% for r in rows %}
+  {% set d = r.d %}
+  <li class="ledger-row st-{{ r.status }}">
+    <a class="ledger-id mono" href="/decisions/{{ d.id }}">#{{ d.id }}</a>
+    <div class="ledger-main">
+      <a class="ledger-choice" href="/decisions/{{ d.id }}">{{ d.label }}</a>
+      <div class="ledger-sub"><span class="tag">{{ d.data.kind or "?" }}/{{ d.data.category or "?" }}</span>
+        {% if d.data.tool_name %}<span class="small muted">picked by a <b>{{ d.data.tool_name }}</b> call · {{ d.created_at|when }}</span>{% endif %}</div>
+      <div class="ledger-ev small"><span class="muted">last evidence:</span> {{ r.evidence }}</div>
+    </div>
+    <div class="ledger-flags">
+      {{ pill(r.status) }}
+      {% if r.by_default %}<span class="flag" title="Chosen by an agent's tool call; no reason recorded">by default</span>{% else %}<span class="flag no" title="A fit check or a person recorded why">has a why</span>{% endif %}
+    </div>
+  </li>
+  {% endfor %}
+</ol>
+{% else %}
+<div class="empty"><b>No decisions match</b>{% if status or kind %}<a href="/decisions">Clear the filters</a>{% else %}Install the hook (<code>notbydefault install &lt;dir&gt;</code>) and let an agent work.{% endif %}</div>
+{% endif %}
+{% endblock %}

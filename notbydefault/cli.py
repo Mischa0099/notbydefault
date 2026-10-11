@@ -232,6 +232,16 @@ def cmd_reverify(args) -> int:
     return 0
 
 
+def cmd_ui(args) -> int:
+    try:
+        from notbydefault.ui.app import serve
+    except ImportError as e:
+        print(f"The UI needs fastapi, uvicorn and jinja2 ({e}). Install them with "
+              "`pip install -e .[ui]`.")
+        return 1
+    return serve(Path(args.project), args.port, args.read_only, not args.no_browser)
+
+
 def cmd_eval(args) -> int:
     from notbydefault.evals import SECTIONS, compare, run
     if args.compare:
@@ -441,6 +451,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cases", choices=["all", "original", "heldout"], default="all",
                    help="which cases to run (held-out: eval/cases/heldout/)")
     p.set_defaults(func=cmd_eval)
+
+    p = sub.add_parser("ui", help="local web UI for the Decision Graph (127.0.0.1 only)")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--port", type=int, default=8765, help="port (default 8765)")
+    p.add_argument("--read-only", action="store_true", help="hide and refuse every action")
+    p.add_argument("--no-browser", action="store_true", help="don't open a browser")
+    p.set_defaults(func=cmd_ui)
 
     args = parser.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):   # model text can hold characters cp1252 lacks

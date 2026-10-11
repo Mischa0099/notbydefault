@@ -200,6 +200,16 @@ def never_touch_demo_state(monkeypatch):
         real_cache(self, folder)
     monkeypatch.setattr(graph_mod.Graph, "__init__", graph_init)
     monkeypatch.setattr(providers_mod.ResponseCache, "__init__", cache_init)
+    try:    # the UI's read-only reader opens graph.db without Graph.__init__
+        from notbydefault.ui import data as ui_data
+    except ImportError:
+        return
+    real_ro = ui_data.ReadGraph.__init__
+
+    def ro_init(self, path):
+        guard(path)
+        real_ro(self, path)
+    monkeypatch.setattr(ui_data.ReadGraph, "__init__", ro_init)
 
 
 # --- a fake Entire CLI ----------------------------------------------------------------

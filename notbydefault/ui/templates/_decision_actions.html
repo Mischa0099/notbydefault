@@ -1,0 +1,24 @@
+{% if not read_only %}
+<section class="sheet actions" aria-labelledby="h-actions">
+  <h2 id="h-actions">Review</h2>
+  <form hx-post="/decisions/{{ d.id }}/review" hx-target="#review-result" hx-swap="innerHTML" method="post" action="/decisions/{{ d.id }}/review">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <label for="reason" class="small muted">Why is this the right choice? (stored on the decision and written to its record)</label>
+    <textarea id="reason" name="reason" rows="3" maxlength="2000" placeholder="e.g. we already run Postgres for billing; one database to operate">{{ data.reason or "" }}</textarea>
+    <div class="row">
+      <button class="btn primary" type="submit" name="mark" value="reviewed">Mark reviewed</button>
+      <button class="btn" type="submit" name="mark" value="reason">Add reason only</button>
+    </div>
+  </form>
+  <div id="review-result" aria-live="polite"></div>
+  {% if data.kind == "model" %}
+  <hr>
+  <form hx-post="/decisions/{{ d.id }}/resolve-dry-run" hx-target="#resolve-result" hx-swap="innerHTML show:#resolve-result:top" hx-indicator="#resolve-busy" method="post" action="/decisions/{{ d.id }}/resolve-dry-run">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button class="btn" type="submit">Resolve: dry run</button>
+    <span id="resolve-busy" class="busy small muted">planning… (no files change)</span>
+  </form>
+  <p class="small muted">Shows the plan and diff only. Applying stays CLI-only.</p>
+  {% endif %}
+</section>
+{% endif %}
