@@ -1,0 +1,42 @@
+<pasted_content id="3ec3">
+Milestone 5: measure NotByDefault itself, with known right answers.
+Use Groq for LLM calls; Gemini's quota resets at 12:30 IST, so anything that
+needs Gemini (check verdicts with the Gemini judge) must use cached results
+or be marked "pending" and resumable. Don't write to demo-app/.notbydefault;
+use throwaway copies.
+
+1. eval/cases/: small scenarios with known right answers, across every
+   feature:
+   - Detection: tool calls that ARE decisions (new DB SDK, hardcoded model,
+     new AI provider) and ones that are NOT (reading files, ordinary edits,
+     installing a test library). Measure detection precision/recall and
+     false interruptions.
+   - Pivot Check: real pivots vs ordinary prompts containing words like
+     "actually", "instead". Measure pivot precision/recall and LLM calls
+     per ordinary prompt.
+   - Requirements: e.g. EU residency, HIPAA, budget cut, 10x users. Expected
+     stale / needs review / unaffected per decision. Measure accuracy.
+   - Model fit: decision #21's verdict from cached results; mark pending if
+     the final judged run hasn't happened yet.
+2. `notbydefault eval` runs everything, prints a results table, saves
+   eval/results/v1.json with a neatlogs trace id per section, and lists
+   every failure with the reason.
+3. Stop after v1 and show me the failures. I'll choose what to fix; then
+   we'll rerun as v2 and produce a before/after table.
+Tag spans with focus_area as before. Do not commit; write the commit
+message (no Co-Authored-By line) to msg.txt and show it to me.
+</pasted_content id="3ec3">
+
+---
+
+<task-notification>
+<task-id>b3ltctb97</task-id>
+<tool-use-id>toolu_01GJMAWpj4SRDu1pwRLAbZcK</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\b644fea6-b4ce-46b5-9aec-c7c9a214f466\tasks\b3ltctb97.output</output-file>
+<status>completed</status>
+<summary>Background command "Smoke-run the requirements section against Groq" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+type msg.txt
