@@ -144,6 +144,11 @@ def test_apply_edits_tests_verifies_records_and_leaves_it_uncommitted(repo):
     for part in ("## Evidence", "| latency per call (s) |", "| verifiers on the new code |",
                  "## Traces", "## Checkpoints", "FAKE_GEMINI_KEY", "| verify | verification | 1 | ok |"):
         assert part in pr, part
+    focus = pr.splitlines()[2]
+    assert focus.startswith("**Focus areas touched by this change:** Planning (`plan`, `recommend`); "
+                            "State (`branch`"), focus
+    assert "Context (`investigate`)" in focus and "Execution (`apply`)" in focus
+    assert "Verification (`fit_check`, `generate_tests`, `test`, `verify`)" in focus
     generated = f"tests/test_nbd_{did}_generated.py"
     assert res["generated_tests"]["path"] == generated, out
     assert res["generated_tests"]["before"] == "0/8 passed"     # the old code calls the old model
@@ -491,3 +496,11 @@ def _with_client(client):
         real(self, *a, **kw)
         self.client, self.tracer = client, Tracer()
     return init
+
+def test_focus_line_lists_each_area_once_with_its_spans_and_retries():
+    line = resolve_mod.focus_line([
+        {"step": "plan", "focus_area": "planning", "attempts": 1},
+        {"step": "test", "focus_area": "verification", "attempts": 2},
+        {"step": "record", "focus_area": "state", "attempts": 1}])
+    assert line == ("**Focus areas touched by this change:** Planning (`plan`); State (`record`); "
+                    "Recovery (`retry_step (test)`); Verification (`test`).")

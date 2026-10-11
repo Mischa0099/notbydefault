@@ -320,3 +320,52 @@ def test_resolution_receipt_shows_generated_test_counts(repo):
     assert "tests/test_nbd_1_generated.py" in html
     assert "8 case(s), 3 from the failure bank" in html
     assert "before the edit 0/8 passed → after 8/8 passed" in html
+
+# --- focus areas ----------------------------------------------------------------------
+
+def test_every_focus_map_span_is_emitted_with_its_area():
+    import re
+    from pathlib import Path
+    from notbydefault.fit.tracing import FOCUS_AREAS
+    src_dir = Path(data.__file__).resolve().parents[1]
+    src = "\n".join(p.read_text(encoding="utf-8") for p in src_dir.rglob("*.py"))
+    llm_src = (src_dir / "llm.py").read_text(encoding="utf-8")   # its _emit tags every event recovery
+    assert sorted(a for a, *_ in data.FOCUS_MAP) == sorted(FOCUS_AREAS)
+    for area, _covers, spans, _anchor in data.FOCUS_MAP:
+        for name in spans:
+            assert (re.search(rf'"{name}"[^()]{{0,160}}?"{area}"', src)
+                    or re.search(rf'"{name}": \("{area}"', src)
+                    or (area == "recovery" and f'_emit("{name}"' in llm_src)), (name, area)
+
+
+def test_saved_journals_show_todays_focus_area():
+    steps, entries = data.journal_view([
+        {"kind": "step", "name": "notbydefault.check", "focus_area": "execution"},
+        {"kind": "step", "name": "plan", "focus_area": "planning"},
+        {"kind": "event", "name": "candidate_selected", "focus_area": "planning", "reason": "r"},
+        {"kind": "step", "name": "judge", "focus_area": "verification"},
+        {"kind": "step", "name": "judge", "focus_area": "verification"},
+        {"kind": "event", "name": "retry_with_feedback", "focus_area": "recovery"},
+        {"kind": "event", "name": "rate_limit_backoff", "focus_area": "recovery"}])
+    assert [(s["name"], s["label"], s["n"]) for s in steps] == [("plan", "Planning", 1),
+                                                                 ("judge", "Verification", 2)]
+    by = {e["name"]: e for e in entries}
+    assert (by["retry_with_feedback"]["label"], by["retry_with_feedback"]["recorded"]) == \
+        ("Iteration", "recovery")
+    assert by["candidate_selected"]["label"] == "Tool use"
+    assert by["rate_limit_backoff"]["label"] == "Recovery" and by["rate_limit_backoff"]["anchor"]
+
+
+def test_overview_chips_link_to_sections_of_the_receipt(base_repo):
+    import re
+    p, did, _ = base_repo
+    c = client_for(p)
+    html = c.get("/").text
+    assert "8 focus areas live here" in html and "Focus areas: where each one lives" in html
+    anchors = set(re.findall(rf'class="focus" href="/decisions/{did}#([\w-]+)"', html))
+    assert anchors and "fit-steps" in anchors
+    page = c.get(f"/decisions/{did}").text
+    for a in anchors:
+        assert f'id="{a}"' in page, a
+    assert 'class="step-strip"' in page and "Agent journal" in page
+    assert re.search(r"<code>plan</code> → <span class=\"focus\"[^>]*>Planning</span>", page)

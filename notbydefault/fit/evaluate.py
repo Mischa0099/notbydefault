@@ -179,7 +179,7 @@ def run_setups(caller: Caller, site: CallSite, samples: list[dict], models: list
                 r = caller.chat(model, messages, span="notbydefault.model_call", role="candidate",
                                 temperature=temperature, max_tokens=max_tokens,
                                 attrs={"notbydefault.sample": i, "notbydefault.attempt": attempt},
-                                focus_area="tool_use" if attempt == 0 else "iteration")
+                                focus_area="execution" if attempt == 0 else "iteration")
                 v = verify(caller, verifier_model, verifiers, text, r.text,
                            attrs={"notbydefault.sample": i, "notbydefault.candidate": model,
                                   "notbydefault.attempt": attempt}, reference=reference)
@@ -216,7 +216,7 @@ def run_setups(caller: Caller, site: CallSite, samples: list[dict], models: list
                         model=model, sample=i)
                     break
                 caller.tracer.event(
-                    "retry_with_feedback", "recovery",
+                    "retry_with_feedback", "iteration",
                     f"{model} failed {', '.join(v.failed)} on input {i} ({v.retry_reason}); "
                     f"retrying with that reason (retry {attempt + 1}/{max_retries})",
                     model=model, sample=i, attempt=attempt + 1)

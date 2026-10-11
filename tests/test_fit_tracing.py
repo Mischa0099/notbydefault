@@ -66,7 +66,7 @@ def test_one_trace_with_model_judge_and_verifier_spans(project):  # noqa: F811
                and s.attributes.get("notbydefault.attempt", 0) > 0]
     assert retries and all(s.attributes["focus_area"] == "iteration" for s in retries)
     events = [e for s in spans for e in s.events if e.name == "retry_with_feedback"]
-    assert events and all(e.attributes["focus_area"] == "recovery" and e.attributes["reason"]
+    assert events and all(e.attributes["focus_area"] == "iteration" and e.attributes["reason"]
                           for e in events)
 
     # neatlogs Condition attributes ------------------------------------------------------

@@ -284,6 +284,51 @@ def record_links(project: Path, rel: str) -> dict:
     return _cached(("record", str(project), rel, mtime), 60.0, compute)
 
 
+# the 8 focus areas: (area, what it covers, spans/events tagged with it, decision-page section
+# where it shows most). tests/test_ui.py checks each span name is emitted with its area.
+FOCUS_MAP = [
+    ("planning", "the plan step", ("plan", "recommend", "latency_requirement",
+                                   "blocked_by_requirement"), "fit-steps"),
+    ("recovery", "swaps and retries on 429", ("swap_candidate", "drop_candidate",
+                                              "rate_limit_backoff", "retry_failed_call",
+                                              "retry_step"), "journal-recovery"),
+    ("context", "briefing and call-site analysis", ("briefing", "context", "investigate",
+                                                    "affected_code"), "affected"),
+    ("execution", "the run, resumable and cached", ("execute", "refresh_cache", "throttle_wait"),
+     "journal-execution"),
+    ("verification", "verifiers, judges and confidence intervals",
+     ("verifiers", "judge", "decide", "verdict", "test", "verify"), "fit-evidence"),
+    ("iteration", "the same case re-run with feedback; the failure bank",
+     ("retry_with_feedback", "expand_sample"), "failure-bank"),
+    ("tool_use", "picking candidates, judges and verifiers",
+     ("candidate_selected", "judge_selected", "verifier_model_selected", "preflight"),
+     "journal-tool_use"),
+    ("state", "graph writes between steps", ("record", "decision_record", "branch", "commit"),
+     "history"),
+]
+
+
+def journal_view(journal: list[dict]) -> tuple[list[dict], list[dict]]:
+    """(steps, entries) of a saved agent journal, each with today's focus area and label."""
+    from notbydefault.fit.tracing import FOCUS_LABELS, current_focus
+    entries, seen = [], set()
+    for e in journal:
+        area = current_focus(e)
+        entries.append({"kind": e.get("kind"), "name": e.get("name"), "area": area,
+                        "label": FOCUS_LABELS.get(area, area), "reason": e.get("reason") or "",
+                        "recorded": e.get("focus_area"), "anchor": area not in seen})
+        seen.add(area)
+    steps: list[dict] = []
+    for e in entries:
+        if e["kind"] != "step" or e["name"] == "notbydefault.check":
+            continue
+        if steps and steps[-1]["name"] == e["name"]:
+            steps[-1]["n"] += 1
+        else:
+            steps.append({**e, "n": 1})
+    return steps, entries
+
+
 def decision_view(project: Path, snap: Snapshot, did: int) -> dict | None:
     """Everything the receipt page shows for one decision, each claim with its source."""
     from notbydefault.fit import failures as failures_mod
@@ -316,6 +361,7 @@ def decision_view(project: Path, snap: Snapshot, did: int) -> dict | None:
                    if (project / ".notbydefault" / "verifiers" / f"{did}.py").is_file() else None),
                "checks": (results.get("verifiers") or {}).get("checks") or [],
                "stopped": results.get("stopped")}
+        fit["steps"], fit["journal"] = journal_view(results.get("journal") or [])
     record = existing_path(project, d)
     record_rel = rel_to(project, str(record)) if record else None
     sections = {"Caveats": [], "Assumptions and evidence": []}
@@ -563,7 +609,23 @@ def overview(project: Path, snap: Snapshot) -> dict:
         debt = compute(Path(project), _GraphView(snap))
     except Exception:      # noqa: BLE001  (a malformed catalog must not break the page)
         debt = None
+    # chips link into the latest fit-checked decision's page (the results file that page shows);
+    # a section that page lacks falls back to its agent journal
+    from notbydefault.fit.tracing import FOCUS_LABELS, current_focus
+    journaled = [c for c in checks if c.data.get("journal") and c.decision_id in snap.nodes
+                 and c.path == rel_to(project, snap.nodes[c.decision_id]["data"].get("results"))]
+    target = max(journaled, key=lambda c: c.run_at) if journaled else None
+    focus_did = target.decision_id if target else None
+    present = {f"journal-{current_focus(e)}" for e in target.data["journal"]} if target else set()
+    if target and snap.nodes[focus_did]["data"].get("history"):
+        present.add("history")
+    focus = [{"area": a, "label": FOCUS_LABELS[a], "covers": covers, "spans": spans,
+              "href": None if not focus_did else f"/decisions/{focus_did}#"
+              + (anchor if anchor in present or anchor in ("fit-steps", "affected", "fit-evidence",
+                                                           "failure-bank") else "agent-journal")}
+             for a, covers, spans, anchor in FOCUS_MAP]
     return {"decisions": len(decisions), "count": count, "checks": len(checks), "debt": debt,
+            "focus": focus, "focus_decision": focus_did,
             "by_default": sum(by_default(d) for d in decisions), "savings": savings,
             "goal": next((g["label"] for g in snap.of_type("goal")), None)}
 

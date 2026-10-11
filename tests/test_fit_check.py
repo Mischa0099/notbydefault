@@ -244,7 +244,7 @@ def test_plan_is_an_explicit_planning_step_with_reasons(project):
                                                   "execution", "recovery", "verification",
                                                   "iteration"}
     retries = [e for e in journal if e["name"] == "retry_with_feedback"]
-    assert retries and all(e["focus_area"] == "recovery" and "failed" in e["reason"]
+    assert retries and all(e["focus_area"] == "iteration" and "failed" in e["reason"]
                            for e in retries)
 
 

@@ -239,7 +239,7 @@ def handle(event: dict, project_dir: Path, tracer=None) -> dict | None:
                    + "\n".join(f"- {l}" for l in lines))
 
     if os.environ.get("NOTBYDEFAULT_ENTIRE") != "0":
-        with tracer.step("refresh_cache", "planning",
+        with tracer.step("refresh_cache", "execution",
                          reason="the Entire lookups are slow: run them detached so the next "
                                 "briefing and `check` have them"):
             try:

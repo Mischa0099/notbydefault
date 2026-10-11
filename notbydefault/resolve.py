@@ -1101,6 +1101,22 @@ def hard_text(s: dict) -> str:
     return f"{s['hard_correct']}/{s['hard_total']}" if s and s.get("hard_total") else "-"
 
 
+def focus_line(steps: list[dict]) -> str:
+    """Each focus area this run's step spans carry, with the spans (a retried step adds its
+    retry_step recovery event)."""
+    from notbydefault.fit.tracing import FOCUS_AREAS, FOCUS_LABELS
+    by: dict[str, list[str]] = {}
+    for s in [*steps, {"step": "record", "focus_area": STEPS["record"][0], "attempts": 1}]:
+        names = by.setdefault(s["focus_area"], [])
+        if s["step"] not in names:
+            names.append(s["step"])
+        if s.get("attempts") == 2:
+            by.setdefault("recovery", []).append(f"retry_step ({s['step']})")
+    return "**Focus areas touched by this change:** " + "; ".join(
+        f"{FOCUS_LABELS[a]} ({', '.join(f'`{n}`' for n in by[a])})"
+        for a in FOCUS_AREAS if a in by) + "."
+
+
 def pr_description(r: Resolver) -> str:
     res, v = r.results, r.results["verdict"]
     stats = res["stats"]
@@ -1119,6 +1135,7 @@ def pr_description(r: Resolver) -> str:
         return ", ".join(pcfg.get(p, {}).get("data_residency") or []) or "none guaranteed"
     budget = res["assumptions"].get("budget")
     lines = [f"# Resolve #{r.decision_id}: switch {r.old_target} -> {r.target}", "",
+             focus_line(r.state["steps"]), "",
              f"Decision #{r.decision_id} (`{r.decision['label']}`), task: "
              f"{res['callsite'].get('task') or '-'}", "", "## Why", "", v["summary"], "", WHY_LINE,
              "",

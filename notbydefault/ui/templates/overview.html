@@ -10,6 +10,11 @@
   {% if ov.goal %}<p class="small">Goal: <b>{{ ov.goal }}</b></p>{% endif %}
 </div>
 {% include "_overview_live.html" %}
+<section class="focus-row" aria-labelledby="h-focus">
+  <h2 id="h-focus">{{ ov.focus|length }} focus areas live here</h2>
+  {% for a in ov.focus %}{% if a.href %}<a class="focus" href="{{ a.href }}" title="{{ a.covers }}">{{ a.label }}</a>{% else %}<span class="focus" title="{{ a.covers }}">{{ a.label }}</span>{% endif %}
+  {% endfor %}
+</section>
 {% if not read_only %}
 <section class="sheet require" aria-labelledby="h-require">
   <div class="section-title" style="margin-top:0"><h2 id="h-require">Add a requirement</h2><span class="src">runs <code>notbydefault require</code>: every decision is judged against it</span></div>
@@ -24,4 +29,14 @@
   <div id="require-result" aria-live="polite"></div>
 </section>
 {% endif %}
+<section aria-labelledby="h-focus-map">
+  <div class="section-title"><h2 id="h-focus-map">Focus areas: where each one lives</h2><span class="src">the <code>focus_area</code> on every span and journal entry{% if ov.focus_decision %} · links open decision #{{ ov.focus_decision }}{% endif %}</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>focus area</th><th>covers</th><th>spans and events tagged with it</th></tr></thead>
+    <tbody>{% for a in ov.focus %}
+      <tr><td>{% if a.href %}<a class="focus" href="{{ a.href }}">{{ a.label }}</a>{% else %}<span class="focus">{{ a.label }}</span>{% endif %}</td>
+        <td class="small">{{ a.covers }}</td><td class="mono small">{{ a.spans|join(", ") }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
 {% endblock %}

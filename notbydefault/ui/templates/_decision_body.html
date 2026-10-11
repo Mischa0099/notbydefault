@@ -1,6 +1,6 @@
 {% include "_claims.html" %}
 {% from "_macros.html" import pill, trace, file %}
-<div class="section-title"><h2>Call site &amp; affected code</h2><span class="src">Entire Graph · {{ v.affected_source or "touched files" }}{% if data.affected_at %} · {{ data.affected_at|when }}{% endif %}</span></div>
+<div class="section-title" id="affected"><h2>Call site &amp; affected code</h2><span class="src">Entire Graph · {{ v.affected_source or "touched files" }}{% if data.affected_at %} · {{ data.affected_at|when }}{% endif %}</span></div>
 <div class="grid-2">
   <div class="table-wrap">
     {% if v.affected %}
@@ -26,11 +26,14 @@
   </div>
 </div>
 
-<div class="section-title"><h2>Fit-check evidence</h2>
+<div class="section-title" id="fit-evidence"><h2>Fit-check evidence</h2>
   <span class="src">{% if v.fit %}{{ file(v.fit.results) }} · run {{ v.fit.run_at|when }}{% else %}no fit check{% endif %}</span></div>
 {% if v.fit %}
 {% set f = v.fit %}
 <p class="small fit-line">{{ FIT_LINE }}</p>
+{% if f.steps %}<ol class="step-strip" id="fit-steps" aria-label="Fit-check steps and their focus areas">
+  {% for s in f.steps %}<li><span class="mono">{{ s.name }}{% if s.n > 1 %} ×{{ s.n }}{% endif %}</span> <span class="focus"{% if s.recorded != s.area %} title="recorded as {{ s.recorded }} before the retag"{% endif %}>{{ s.label }}</span></li>{% endfor %}
+</ol>{% endif %}
 <div class="table-wrap"><table class="fit">
   <thead><tr>{% for h in f.table.headers %}<th{% if not loop.first %} class="num"{% endif %}>{{ h }}</th>{% endfor %}</tr></thead>
   <tbody>
@@ -74,6 +77,13 @@
     {% if not any_fail.v %}<p class="muted small">No per-case failures recorded{{ " (no reference answers)" if not f.table.refs }}.</p>{% endif %}
   </div>
 </div>
+{% if f.journal %}
+<div class="section-title" id="agent-journal"><h2>Agent journal</h2><span class="src">{{ file(f.results) }} · {{ f.journal|length }} entries, each with its focus area</span></div>
+<ul class="journal">
+  {% for e in f.journal %}<li{% if e.anchor %} id="journal-{{ e.area }}"{% endif %}><code>{{ e.name }}</code> → <span class="focus"{% if e.recorded != e.area %} title="recorded as {{ e.recorded }} before the retag"{% endif %}>{{ e.label }}</span>{% if e.reason %} <span class="why">{{ e.reason|truncate(120, True, "…") }}</span>{% endif %}</li>
+  {% endfor %}
+</ul>
+{% endif %}
 {% else %}
 <div class="empty"><b>Not fit-tested</b>{% if data.kind == "model" %}Run <code>notbydefault check {{ d.id }}</code> to test it against the project's constraints.{% else %}Fit checks test model decisions; this one is a {{ data.kind }} decision.{% endif %}</div>
 {% endif %}

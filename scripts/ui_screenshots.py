@@ -23,7 +23,9 @@ sys.path.insert(0, str(REPO))
 
 PAGES = [("overview", "/"), ("decisions", "/decisions"), ("decision", "/decisions/{did}"),
          ("graph", "/graph"), ("graph-focus", "/graph?focus={did}"), ("timeline", "/timeline"), ("evals", "/evals"),
-         ("costs", "/costs")]
+         ("costs", "/costs"), ("fit-check", "/decisions/{did}")]
+# pages shot as a clip: from the top of the first selector to the bottom of the last one
+CLIPS = {"fit-check": ("#fit-evidence", ".journal")}
 
 
 def throwaway_demo(dest: Path) -> Path:
@@ -92,7 +94,14 @@ def main() -> int:
                         page.wait_for_timeout(1200)       # dagre layout
                     over = page.evaluate("document.documentElement.scrollWidth - innerWidth")
                     file = out / f"{name}-{scheme}.png"
-                    page.screenshot(path=str(file), full_page=not name.startswith("graph"))
+                    if name in CLIPS:
+                        first, last = (page.locator(s).first.bounding_box() for s in CLIPS[name])
+                        top = first["y"] - 12
+                        page.screenshot(path=str(file), full_page=True, clip={
+                            "x": 0, "y": top, "width": args.width,
+                            "height": last["y"] + last["height"] + 16 - top})
+                    else:
+                        page.screenshot(path=str(file), full_page=not name.startswith("graph"))
                     print(f"{file.relative_to(REPO) if file.is_relative_to(REPO) else file}  horizontal overflow: {over}px")
                 if errors:
                     print(f"{scheme}: browser errors:\n  " + "\n  ".join(errors))

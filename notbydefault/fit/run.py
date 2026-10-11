@@ -25,8 +25,9 @@ DEFAULT_CALLS_PER_USER = 30
 EXPECTED_OUT_TOKENS = 350     # cost estimate only; the spend guard uses worst cases
 EXPECTED_EXTRA_ATTEMPTS = 0.5  # cost estimate only: average retries per verified call
 SETUPS = (ALONE, VERIFIED)
-RECOVERY_EVENTS = {"rate_limit_backoff", "retry_failed_call", "retry_with_feedback", "call_failed",
-                   "judge_failed", "swap_candidate", "drop_candidate", "daily_limit_stop",
+# journal events counted as recoveries in the report's "Agent journal: ..." line. Retries with
+# verifier feedback are iteration, not recovery, so retry_with_feedback is not counted here.
+RECOVERY_EVENTS = {"rate_limit_backoff", "retry_failed_call", "call_failed", "judge_failed", "swap_candidate", "drop_candidate", "daily_limit_stop",
                    "budget_stop", "expand_failed", "setup_failed"}
 PROBE = [{"role": "user", "content": "Reply with the single word: ok"}]
 
@@ -297,8 +298,8 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                  role="judge_from_candidate")
                 for model, why in cfg["why"].items():
                     tracer.event("judge_selected" if model in cfg["judges"] else "candidate_selected",
-                                 "planning", why, model=model)
-                tracer.event("verifier_model_selected", "planning",
+                                 "tool_use", why, model=model)
+                tracer.event("verifier_model_selected", "tool_use",
                              "cheapest candidate: verified setups pay for every rubric check",
                              model=cfg["verifier_model"])
             try:
@@ -342,7 +343,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                      f"reusing {len(samples)} saved inputs so results stay "
                                      "comparable across runs", count=len(samples))
                     if bank:
-                        tracer.event("expand_sample", "context",
+                        tracer.event("expand_sample", "iteration",
                                      f"{len(bank)} inputs failed a verifier in earlier runs; adding "
                                      "them first so known failures are always re-tested",
                                      added=len(bank))

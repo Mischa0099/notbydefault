@@ -19,6 +19,16 @@ from notbydefault.env import load_env
 MAX_ATTR_CHARS = 4000
 FOCUS_AREAS = ("planning", "tool_use", "state", "context", "execution", "recovery",
                "verification", "iteration")
+FOCUS_LABELS = {"planning": "Planning", "tool_use": "Tool use", "state": "State",
+                "context": "Context", "execution": "Execution", "recovery": "Recovery",
+                "verification": "Verification", "iteration": "Iteration"}
+# journals saved before the 2026-10-12 retag carry the old tag: (name, old) -> today's tag
+RETAGGED = {("candidate_selected", "planning"): "tool_use",
+            ("judge_selected", "planning"): "tool_use",
+            ("verifier_model_selected", "planning"): "tool_use",
+            ("retry_with_feedback", "recovery"): "iteration",
+            ("expand_sample", "context"): "iteration",
+            ("refresh_cache", "planning"): "execution"}
 # neatlogs span kinds per call role (its decorator has no "LLM" kind)
 SPAN_KIND = {"candidate": "TOOL", "analyst": "TOOL", "preflight": "TOOL",
              "judge": "EVALUATOR", "verifier": "GUARDRAIL"}
@@ -31,6 +41,11 @@ def _check_focus(focus_area: str) -> str:
     if focus_area not in FOCUS_AREAS:
         raise ValueError(f"focus_area must be one of {FOCUS_AREAS}, not {focus_area!r}")
     return focus_area
+
+
+def current_focus(entry: dict) -> str:
+    """The focus_area the code gives this journal entry today (a saved one may predate a retag)."""
+    return RETAGGED.get((entry.get("name"), entry.get("focus_area")), entry.get("focus_area"))
 
 
 class SpanAttrs:

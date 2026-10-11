@@ -343,3 +343,15 @@ li.broken { background: color-mix(in srgb, var(--bad-bg) 50%, transparent); padd
 .debt code.copy { white-space: nowrap; }
 .feed li.k-claims .dot, .k-claims.lk i, .tl-item.k-claims::before { border-color: var(--bad); background: var(--sheet); border-style: double; border-width: 3px; }
 .feed li.k-watch .dot, .k-watch.lk i, .tl-item.k-watch::before { border-color: var(--warn); background: var(--sheet); border-style: double; border-width: 3px; }
+
+/* focus areas: one neutral badge style, the label carries the meaning */
+.focus { display: inline-block; font: 600 .68rem/1 var(--mono); padding: 3px 6px; border-radius: 4px; color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); white-space: nowrap; text-decoration: none; }
+a.focus:hover, a.focus:focus-visible { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.focus-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 22px 0 6px; }
+.focus-row h2 { font-size: 1rem; margin: 0 6px 0 0; }
+.step-strip { list-style: none; padding: 0; margin: 8px 0 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.step-strip li { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--sheet); font-size: .8rem; }
+.journal { list-style: none; padding: 0; margin: 0; columns: 2 24rem; column-gap: 28px; font-size: .82rem; }
+.journal li { break-inside: avoid; padding: 4px 0; border-bottom: 1px solid var(--rule-2); overflow-wrap: anywhere; }
+.journal .why { color: var(--muted); }
+[id] { scroll-margin-top: 16px; }
