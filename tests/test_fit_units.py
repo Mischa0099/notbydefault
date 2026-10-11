@@ -479,3 +479,15 @@ def test_retries_stop_at_the_call_budget(monkeypatch):
     with pytest.raises(LLMError, match="gave up after 120s"):
         c.complete("m", [{"role": "user", "content": "x"}])
     assert len(tries) < 6
+
+
+def test_cache_tolerates_concurrent_writes_of_the_same_key(tmp_path):
+    """Identical requests from two worker threads put the same key at once (Windows rename)."""
+    from concurrent.futures import ThreadPoolExecutor
+    from notbydefault.fit.providers import ResponseCache
+    cache = ResponseCache(tmp_path)
+    key = cache.key("groq:m", [{"role": "user", "content": "x"}], 0.0, 10, False)
+    with ThreadPoolExecutor(8) as pool:
+        list(pool.map(lambda i: cache.put(key, {"text": "same", "i": 0}), range(64)))
+    assert cache.get(key)["text"] == "same"
+    assert not list(tmp_path.rglob("*.tmp"))

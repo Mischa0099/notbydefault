@@ -42,6 +42,9 @@ class ReportContext:
     bar: str = ""
     best_quality: tuple | None = None
     caveats: list[str] = field(default_factory=list)
+    max_latency_s: float | None = None    # latency requirement (avg seconds per call), if any
+    judge_mode: str = "judge"             # "judge" | "reference_only" (no judge was available)
+    judge_note: str = ""                  # how the judge was obtained, or why there is none
 
     @property
     def has_references(self) -> bool:
@@ -113,6 +116,9 @@ def markdown_table(table: tuple[list[str], list[list[str]]]) -> str:
 
 
 def judges_line(ctx: ReportContext) -> str:
+    if ctx.judge_mode == "reference_only":
+        return ("REFERENCE-ONLY scoring: no judge model was available, so there are no quality "
+                f"scores; correctness against the reference answers decides ({ctx.judge_note}).")
     a = ctx.agreement or {}
     if len(ctx.judges) < 2 or not a.get("n"):
         return f"Judged blind by {', '.join(ctx.judges) or ctx.judge}."
@@ -190,15 +196,59 @@ def assumptions(ctx: ReportContext) -> list[str]:
         judges_line(ctx) if ctx.has_references else
         f"Quality judged blind by {ctx.judge}; response order randomized per input.",
         trust_line(ctx),
-    ]
+    ] + ([f"Latency requirement: at most {ctx.max_latency_s:g}s per call on average (including "
+          "retries and verification); slower setups were not recommended."]
+         if ctx.max_latency_s else [])
+
+
+SLOWER_TRADEOFF = 2.0   # mention latency when the recommendation is more than this much slower
+
+
+def task_phrase(task: str) -> str:
+    """The task as it reads after "to": "Extracts action items." -> "extract action items"."""
+    task = task.strip().rstrip(".")
+    if not task:
+        return ""
+    first, _, rest = task.partition(" ")
+    low = first.lower()
+    if first[:1].isupper() and len(low) > 3 and low.endswith("s") and not low.endswith("ss"):
+        if low.endswith("ies"):
+            low = low[:-3] + "y"                       # classifies -> classify
+        elif low.endswith(("sses", "shes", "ches", "xes")):
+            low = low[:-2]                             # matches -> match, fixes -> fix
+        else:
+            low = low[:-1]                             # extracts -> extract
+        first = low
+    else:
+        first = first[:1].lower() + first[1:]
+    return f"{first} {rest}".strip()
+
+
+def latency_tradeoff(stats: dict, verdict: Verdict) -> str:
+    """A sentence when the recommended setup is much slower than today's, else ""."""
+    c, rec = stats.get(verdict.reference), stats.get(verdict.recommended)
+    if not c or not rec or rec.key == c.key or not c.avg_latency_s:
+        return ""
+    ratio = rec.avg_latency_s / c.avg_latency_s
+    if ratio <= SLOWER_TRADEOFF:
+        return ""
+    return (f"Trade-off: {rec.name} is {ratio:.1f}x slower than today's setup "
+            f"({rec.avg_latency_s:.1f}s vs {c.avg_latency_s:.1f}s per call"
+            + (", including retries and verification" if rec.setup != c.setup else "")
+            + "); set a latency requirement (`check --max-latency SECONDS`) if that matters.")
 
 
 def summary_text(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
     c = stats[verdict.reference]
     parts = [f"Decision #{ctx.decision_id} uses {ctx.literal} ({ctx.chosen})"
-             + (f" to {ctx.task.rstrip('.')[0].lower() + ctx.task.rstrip('.')[1:]}." if ctx.task else ".")]
+             + (f" to {task_phrase(ctx.task)}." if task_phrase(ctx.task) else ".")]
     n_models = len({s.model for s in stats.values()})
-    if ctx.has_references:
+    if ctx.has_references and ctx.judge_mode == "reference_only":
+        parts.append(f"We ran {ctx.n_samples} cases ({sample_label(ctx)}) through {n_models} models, "
+                     "each alone and with a verifier, and scored every answer against hand-written "
+                     "reference answers only: no judge model was available, so there are no "
+                     "quality scores.")
+    elif ctx.has_references:
         parts.append(f"We ran {ctx.n_samples} cases ({sample_label(ctx)}) through {n_models} models, "
                      "each alone and with a verifier, scored every answer against hand-written "
                      f"reference answers, and had {len(ctx.judges)} judge(s) from different "
@@ -211,6 +261,9 @@ def summary_text(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
         parts.append("The run STOPPED EARLY because --max-cost was reached, so results are "
                      "incomplete.")
     parts.append(verdict.summary)
+    tradeoff = latency_tradeoff(stats, verdict)
+    if tradeoff:
+        parts.append(tradeoff)
     rec = stats.get(verdict.recommended)
     if c.monthly_cost is not None:
         line = f"At the assumed volume, today's setup costs about {_money(c.monthly_cost)}/month"
@@ -227,7 +280,9 @@ def render(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
     best = stats.get(ctx.best_quality) if ctx.best_quality else None
     lines = [f"NotByDefault check: decision #{ctx.decision_id} ({ctx.literal})"
              + (f"  [{FREE_TIER_LABEL}]" if ctx.free_tier else "")
-             + (f"  [judge: {ctx.judge}, single-provider run]" if ctx.single_provider else ""),
+             + ("  [REFERENCE-ONLY: no judge]" if ctx.judge_mode == "reference_only" else "")
+             + (f"  [judge: {ctx.judge}, single-provider run]"
+                if ctx.single_provider and ctx.judge else ""),
              "",
              summary_text(stats, verdict, ctx), "", text_table(rows), ""]
     if ctx.has_references:
@@ -237,8 +292,10 @@ def render(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
                   + (best.name if best else "none fits the budget at this volume"),
                   f"  Bar: {ctx.bar}.", "", "Case results (vs reference answers):"]
         lines += [f"  {l}" for l in case_results(ctx)] + [""]
-    if ctx.caveats:
-        lines += ["Caveats:"] + [f"  - {c}" for c in ctx.caveats] + [""]
+    caveats_ = list(ctx.caveats) + ([f"Judge: {ctx.judge_note}."]
+                                    if ctx.judge_note and ctx.judge_mode == "judge" else [])
+    if caveats_:
+        lines += ["Caveats:"] + [f"  - {c}" for c in caveats_] + [""]
     lines += ["Assumptions:"]
     lines += [f"  - {a}" for a in assumptions(ctx)]
     if verdict.rejected:

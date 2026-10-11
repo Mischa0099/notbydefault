@@ -294,6 +294,90 @@ def dates_normalized(path: str = "action_items[].due_date", why: str = "") -> Ch
     return Check("dates_normalized", {"path": path}, why, fn)
 
 
+# A date reads as a deadline after one of these words (English and Spanish) ...
+DUE_CUE = re.compile(r"\b(due|by|before|until|till|deadline|later than|target(?:ed)?|"
+                     r"antes|hasta|para)\b[^.;!?]{0,20}$", re.IGNORECASE)
+# ... or after "on"/"el" when it comes after the task ("ship the beta on 20/10") ...
+POSITIONAL_CUE = re.compile(r"\b(on|el)\s+$", re.IGNORECASE)
+# ... or when the phrase is a deadline by itself.
+INHERENT_DUE = re.compile(r"^(today|tomorrow|day after tomorrow|hoy|ma[nñ]ana|pasado ma[nñ]ana|"
+                          r"end of the (week|month)|(in|en) \d{1,2} (days|d[ií]as))$", re.IGNORECASE)
+
+
+def _stems(text: str) -> set[str]:
+    return {w.lower()[:5] for w in _words(text)
+            if len(w) >= 4 and w.lower() not in STOPWORDS and not w.isdigit()}
+
+
+def _note_units(text: str) -> list[str]:
+    """The notes as sentences (one per line, then split on . ! ?), meeting header removed."""
+    from notbydefault.fit.dates import MEETING_RX
+    units = []
+    for line in text.splitlines():
+        if MEETING_RX.search(line) or not line.strip():
+            continue
+        line = re.sub(r"^\s*[-*•]\s*", "", line)
+        units += [u.strip() for u in re.split(r"(?<=[.!?])\s+", line) if u.strip()]
+    return units
+
+
+def _stated_due(unit: str, task_stems: set[str], base) -> list[tuple[str, str]]:
+    """(phrase, ISO date) for each date the sentence states as a deadline."""
+    from notbydefault.fit.dates import mentioned_dates
+    low = unit.lower()
+    first_task = min((m.start() for m in re.finditer(r"[\w'-]+", low)
+                      if m.group(0)[:5] in task_stems), default=len(low))
+    out = []
+    for day, phrases in mentioned_dates(unit, base).items():
+        for phrase in phrases:
+            at = low.find(phrase.lower())
+            if at < 0:
+                continue
+            before = low[max(0, at - 40):at]
+            if (INHERENT_DUE.match(phrase.strip()) or DUE_CUE.search(before)
+                    or (POSITIONAL_CUE.search(before) and at > first_task)):
+                out.append((phrase, day.isoformat()))
+    return out
+
+
+def due_dates_present(path: str = "action_items", why: str = "") -> Check:
+    """No item without a due date when the notes clearly state one for it (grounded: the
+    sentence that best matches the item's task words states a date as a deadline)."""
+    from notbydefault.fit.dates import meeting_date
+
+    def fn(i, o):
+        try:
+            items = _values(_load_strict(o), f"{path}[]")
+        except (json.JSONDecodeError, AttributeError):
+            return False, "not valid JSON, due dates can't be checked"
+        base = meeting_date(i)
+        units = [(u, _stems(u)) for u in _note_units(i)]
+        missing = []
+        for item in items:
+            if not isinstance(item, dict) or item.get("due_date"):
+                continue
+            task = _stems(str(item.get("task") or ""))
+            owners = [n.strip().casefold() for n in str(item.get("owner") or "").split(",")
+                      if n.strip()]
+
+            def score(u):
+                text, stems = u
+                bonus = 0.5 if any(re.search(rf"(?<!\w){re.escape(n)}(?!\w)", text.casefold())
+                                   for n in owners) else 0
+                return len(task & stems) + bonus if task & stems else 0
+            scored = [(score(u), u) for u in units]
+            best = max((s for s, _ in scored), default=0)
+            if best <= 0:
+                continue
+            stated = [_stated_due(text, task, base) for s, (text, _) in scored if s == best]
+            if stated and all(stated):     # every best-matching sentence states a deadline
+                phrase, day = stated[0][0]
+                missing.append(f"{item.get('task')!r}: the notes say {phrase!r} ({day})")
+        return not missing, ("item(s) with no due date although the notes state one: "
+                             + "; ".join(missing))
+    return Check("due_dates_present", {"path": path}, why, fn)
+
+
 def no_missing_items(why: str = "") -> Check:
     """Evaluation only: every reference action item is present."""
     from notbydefault.fit.reference import match, parse_output
@@ -332,7 +416,8 @@ def llm_rubric(criterion: str, why: str = "") -> RubricCheck:
 FACTORIES = {f.__name__: f for f in [
     not_empty, max_words, min_words, max_chars, max_sentences, min_sentences, forbid_regex,
     require_regex, no_preamble, no_markdown, covers_inputs, json_object, json_matches_schema,
-    owners_in_input, dates_in_input, dates_normalized, no_missing_items, no_extra_items]}
+    owners_in_input, dates_in_input, dates_normalized, due_dates_present, no_missing_items,
+    no_extra_items]}
 
 __all__ = list(FACTORIES) + ["llm_rubric", "Check", "RubricCheck"]
 

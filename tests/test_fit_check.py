@@ -311,3 +311,208 @@ def test_multi_provider_run_has_no_single_provider_label(project):
     p, did = project
     _, report = run(p, did)
     assert "single-provider run" not in report
+
+
+# --- v4: judge crash, latency, wording ----------------------------------------------------
+
+# --- no judge left: degrade instead of fail (Groq-only 3-model setup, as in the throwaway copy)
+
+def groq_only_client(p, unavailable=()):
+    """gpt-oss-120b (today's), gpt-oss-20b and qwen: every free model becomes a candidate."""
+    import copy
+    from conftest import CATALOG
+    catalog = copy.deepcopy(CATALOG)
+    catalog["providers"] = {"groq": catalog["providers"]["groq"]}
+    catalog["providers"]["groq"]["models"].pop("llama-3.1-8b-instant")
+    t = FakeTransport(unavailable=unavailable)
+    return make_client(cache_dir=cache_dir(p), transport=t, catalog=catalog), t
+
+
+def run_traced(p, did, client, **opts):
+    from notbydefault.fit.tracing import Tracer
+    out, tracer = [], Tracer()
+    code = check_model_decision(p, did, CheckOptions(yes=True, calls_per_user=30, workers=2,
+                                                     **opts),
+                                client=client, tracer=tracer, ask=lambda _: "", out=out.append)
+    summary = next(e for e in reversed(tracer.journal) if e["name"] == "root_summary")
+    return code, "\n".join(out), tracer, summary
+
+
+def candidates_entry(p, did):
+    import yaml
+    doc = yaml.safe_load((p / ".notbydefault" / "candidates.yaml").read_text(encoding="utf-8"))
+    return doc["decisions"][str(did)]
+
+
+def write_reference_samples(p, did, n=6):
+    """Cases with reference answers, so a run without a judge can still score correctness."""
+    rows = [{"id": f"r{i}", "hard": i % 2 == 0,
+             "user_message": f"- buy milk {i}\n- call Sam about launch {i}",
+             "reference": {"action_items": [{"task": f"buy milk {i}", "owner": None,
+                                             "due_date": None, "priority": "medium"}]}}
+            for i in range(n)]
+    path = p / ".notbydefault" / "samples" / f"{did}.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
+
+
+def test_all_candidates_frees_one_to_judge_and_records_a_swap(project):
+    p, did = project
+    client, t = groq_only_client(p)
+    code, report, tracer, summary = run_traced(p, did, client)
+    assert code == 0, report
+    entry = candidates_entry(p, did)
+    # qwen is not trusted as a sole judge (JUDGE_FALLBACK_SKIP), so gpt-oss-20b is freed
+    assert entry["judge"] == "groq:openai/gpt-oss-20b"
+    assert [c["model"] for c in entry["candidates"]] == ["groq:openai/gpt-oss-120b",
+                                                          "groq:qwen/qwen3.8-27b"]
+    assert entry["swaps"][0]["role"] == "judge_from_candidate"
+    swaps = [e for e in tracer.journal if e["name"] == "swap_candidate"]
+    assert swaps and swaps[0]["role"] == "judge_from_candidate"
+    assert summary["nbd.swap_count"] >= 1 and summary["nbd.judge_mode"] == "judge"
+    assert "freed from the candidates to judge" in report
+    assert any(k == "judge" for _, k in t.calls)            # the freed model really judges
+
+
+def test_no_judge_at_all_falls_back_to_reference_only_scoring(project):
+    p, did = project
+    write_reference_samples(p, did)
+    # the freed judge (20b) turns out unavailable; qwen can't judge alone; only 120b is left
+    client, t = groq_only_client(p, unavailable=("openai/gpt-oss-20b",))
+    code, report, tracer, summary = run_traced(p, did, client)
+    assert code == 0, report
+    assert summary["nbd.judge_mode"] == "reference_only"
+    assert "REFERENCE-ONLY" in report and "no quality scores" in report
+    assert "judge groq:openai/gpt-oss-20b unavailable" in report
+    assert not any(k == "judge" for _, k in t.calls)        # no judge calls at all
+    assert any(e["name"] == "reference_only" for e in tracer.journal)
+    assert candidates_entry(p, did)["judge"] is None
+
+
+def test_nothing_can_run_exits_5_with_one_line_listing_what_was_tried(project):
+    p, did = project      # no reference answers: synthetic samples would need a judge
+    client, t = groq_only_client(p, unavailable=("openai/gpt-oss-20b",))
+    code, report, tracer, summary = run_traced(p, did, client)
+    assert code == 5
+    line = next(l for l in report.splitlines() if l.startswith("Can't run the fit check"))
+    assert "no judge and no reference answers" in line and "tried:" in line
+    assert "freed from the candidates to judge" in line
+    assert "judge groq:openai/gpt-oss-20b unavailable" in line
+    assert "no non-current candidate can be freed" in line
+    assert summary["nbd.stopped_early"] is True and summary["nbd.judge_mode"] == "none"
+    assert {k for _, k in t.calls} <= {"probe"}             # stopped before any real work
+
+
+def test_a_second_judge_is_promoted_before_freeing_a_candidate(tmp_path):
+    from notbydefault.fit.run import replace_judge
+    from notbydefault.fit.tracing import Tracer
+    cfg = {"chosen": "groq:a", "candidates": ["groq:a", "groq:b"], "judge": "gemini:j",
+           "judges": ["gemini:j", "groq:k"], "why": {}, "judge_tried": []}
+    swaps = []
+    import notbydefault.fit.candidates as cm
+    orig = cm.swap
+    cm.swap = lambda *a, **k: swaps.append(a)
+    try:
+        queue = [("groq:k", "judge2")]
+        assert replace_judge(cfg, "gemini:j", "quota", {"gemini:j"}, queue, None, tmp_path,
+                             {"id": 1}, Tracer())
+    finally:
+        cm.swap = orig
+    assert cfg["judge"] == "groq:k" and cfg["judges"] == ["groq:k"]
+    assert cfg["candidates"] == ["groq:a", "groq:b"]         # nothing taken out of the comparison
+    assert queue == [("groq:k", "judge")] and swaps[0][2] == "judge"
+
+
+def latest_verdict(p):
+    path = sorted((p / ".notbydefault" / "results").glob("*.json"))[-1]
+    return json.loads(path.read_text(encoding="utf-8"))["verdict"]
+
+
+def test_latency_requirement_overrides_the_verdict(project):
+    p, did = project
+    code, before = run(p, did)
+    assert code == 0 and latest_verdict(p)["recommended"][1] == "verified"
+    # the fake answers in 0.01 s per call: a verified setup (model + verifier) takes longer
+    code, after = run(p, did, max_latency_s=0.015)
+    assert code == 0
+    assert latest_verdict(p)["recommended"][1] == "alone"
+    assert "too slow" in after and "Latency requirement: at most 0.015s" in after
+
+
+def test_latency_requirement_from_the_graph(project):
+    from notbydefault.fit.run import latency_requirement
+    p, did = project
+    with Graph.for_project(p) as g:
+        assert latency_requirement(g) is None
+        g.add_node("requirement", "Responses within 2 seconds", {"key": "max_latency_s", "value": "2"})
+        g.add_node("requirement", "p95 under 1.5s", {"constraints": {"max_latency_s": 1.5}})
+        assert latency_requirement(g) == 1.5
+
+
+def test_latency_tradeoff_is_mentioned_when_much_slower():
+    from types import SimpleNamespace as NS
+    from notbydefault.fit.report import latency_tradeoff
+    from notbydefault.fit.stats import Verdict
+    today = NS(key=("a", "alone"), name="a", setup="alone", avg_latency_s=0.6)
+    slow = NS(key=("b", "verified"), name="b + verifier", setup="verified", avg_latency_s=1.5)
+    near = NS(key=("c", "alone"), name="c", setup="alone", avg_latency_s=1.1)
+    stats = {s.key: s for s in (today, slow, near)}
+    line = latency_tradeoff(stats, Verdict("switch", today.key, slow.key, "", {}))
+    assert line.startswith("Trade-off: b + verifier is 2.5x slower") and "retries" in line
+    assert latency_tradeoff(stats, Verdict("switch", today.key, near.key, "", {})) == ""
+    assert latency_tradeoff(stats, Verdict("keep", today.key, today.key, "", {})) == ""
+
+
+def test_summary_reads_as_english():
+    from notbydefault.fit.report import task_phrase
+    assert task_phrase("Extracts structured action items from meeting notes.") == \
+        "extract structured action items from meeting notes"
+    assert task_phrase("Summarizes the notes") == "summarize the notes"
+    assert task_phrase("Classifies tickets") == "classify tickets"
+    assert task_phrase("Matches invoices") == "match invoices"
+    assert task_phrase("Generate a summary.") == "generate a summary"
+    assert task_phrase("") == ""
+
+
+# --- the judge in the report and the plan header ---------------------------------------------
+
+def test_freed_same_family_judge_is_flagged_as_possible_self_preference(project):
+    p, did = project
+    client, _ = groq_only_client(p)
+    code, report, _, _ = run_traced(p, did, client)
+    assert code == 0, report
+    assert ("Possible self-preference: the judge groq:openai/gpt-oss-20b is from the same model "
+            "family (gpt-oss) as today's model groq:openai/gpt-oss-120b, because it was freed "
+            "from the candidates to judge") in report
+
+
+def test_other_family_judge_gets_no_self_preference_caveat():
+    from types import SimpleNamespace as NS
+    from notbydefault.fit.run import same_family_judges
+    pricing = NS(models=[{"id": "groq:a", "family": "gpt-oss"}, {"id": "gemini:j", "family": "gemini"},
+                         {"id": "groq:b", "family": "gpt-oss"}])
+    cfg = {"chosen": "groq:a", "judges": ["gemini:j"], "why": {}}
+    assert same_family_judges(cfg, pricing) == []
+    cfg = {"chosen": "groq:a", "judges": ["groq:b"], "why": {"groq:b": "next strongest free judge"}}
+    [line] = same_family_judges(cfg, pricing)
+    assert "same model family (gpt-oss)" in line and "freed" not in line
+
+
+def test_header_prints_judge_changes_made_by_preflight(project):
+    p, did = project
+    t = FakeTransport(unavailable=("gemini-3.8-flash",))       # the configured judge
+    code, report = run(p, did, client=client_for(p, t))
+    assert code == 0, report
+    line = next(l for l in report.splitlines() if l.strip().startswith("judge changed:"))
+    assert "gemini:gemini-3.8-flash -> " in line and "(unavailable: free tier limit: 0)" in line
+    assert report.index("judges:") < report.index("judge changed:")
+
+
+def test_header_prints_the_drop_to_no_judge(project):
+    p, did = project
+    write_reference_samples(p, did)
+    client, _ = groq_only_client(p, unavailable=("openai/gpt-oss-20b",))
+    code, report, _, _ = run_traced(p, did, client)
+    assert code == 0
+    assert "(freed from the candidates: groq:openai/gpt-oss-20b)" in report
+    assert "judge changed: groq:openai/gpt-oss-20b -> none (unavailable: free tier limit: 0" in report

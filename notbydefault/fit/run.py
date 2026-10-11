@@ -41,6 +41,7 @@ class CheckOptions:
     seed: int = 0
     expand_rounds: int = 1      # if the verdict is too close to call, add inputs this many times
     expand_by: int = 4
+    max_latency_s: float | None = None   # latency requirement: avg seconds per call
 
 
 def graph_context(g: Graph, decision: dict) -> dict:
@@ -53,7 +54,31 @@ def graph_context(g: Graph, decision: dict) -> dict:
         "users": parse_number((by_key.get("users") or {}).get("data", {}).get("value")),
         "budget": parse_number((by_key.get("budget") or {}).get("data", {}).get("value")),
         "calls_per_user_node": by_key.get("calls_per_user"),
+        "max_latency_s": latency_requirement(g),
     }
+
+
+def latency_requirement(g: Graph) -> float | None:
+    """The strictest latency requirement in the graph (avg seconds per call), if any: a
+    requirement/constraint node with key max_latency_s, or constraints.max_latency_s."""
+    found = []
+    for n in g.nodes("requirement") + g.nodes("constraint"):
+        data = n["data"]
+        value = (data.get("value") if data.get("key") == "max_latency_s"
+                 else (data.get("constraints") or {}).get("max_latency_s"))
+        number = parse_number(str(value)) if value not in (None, "") else None
+        if number:
+            found.append(number)
+    return min(found) if found else None
+
+
+def latency_exclusions(stats: dict, max_latency_s: float | None) -> dict:
+    """Setups the latency requirement rules out: key -> reason (overrides the verdict)."""
+    if not max_latency_s:
+        return {}
+    return {s.key: f"too slow: {s.avg_latency_s:.1f}s per call vs the {max_latency_s:g}s "
+                   "latency requirement"
+            for s in stats.values() if s.calls > s.errors and s.avg_latency_s > max_latency_s}
 
 
 def resolve_calls_per_user(g: Graph, decision: dict, ctx: dict, opts: CheckOptions,
@@ -86,7 +111,7 @@ def resolve_calls_per_user(g: Graph, decision: dict, ctx: dict, opts: CheckOptio
 
 def estimate_cost(pricing, cfg: dict, site, have_site: bool, have_verifiers: bool,
                   inputs: list[str] | None, n_inputs: int, system_prompt: str) -> float:
-    analyst = pricing.price(cfg["judge"])
+    analyst = pricing.price(analyst_model(cfg, pricing))
     snippet_tokens = len(site.snippet) / 3.5
     total = 0.0
     if not have_site:
@@ -104,9 +129,20 @@ def estimate_cost(pricing, cfg: dict, site, have_site: bool, have_verifiers: boo
         total += n_inputs * attempts * p.cost(avg_in * 1.5, EXPECTED_OUT_TOKENS)
         total += n_inputs * attempts * verifier.cost(avg_in + EXPECTED_OUT_TOKENS + 150, 60)
     outputs = 1.5 * len(cfg["candidates"])
-    total += n_inputs * pricing.price(cfg["judge"]).cost(
-        700 + avg_in + outputs * EXPECTED_OUT_TOKENS, 60 * outputs + 50)
+    for j in cfg["judges"]:
+        total += n_inputs * pricing.price(j).cost(
+            700 + avg_in + outputs * EXPECTED_OUT_TOKENS, 60 * outputs + 50)
     return total
+
+
+def analyst_model(cfg: dict, pricing) -> str:
+    """The model for setup work (call-site analysis, samples, verifiers): the judge, or, with
+    no judge, the strongest candidate (today's model on a tie)."""
+    if cfg.get("judge"):
+        return cfg["judge"]
+    entry = {m["id"]: m for m in pricing.models}
+    return max(cfg["candidates"], key=lambda m: ((entry.get(m) or {}).get("strength") or 0,
+                                                 m == cfg["chosen"]))
 
 
 def assemble_inputs(project: Path, decision_id: int, samples: list[dict]) -> list[dict]:
@@ -159,8 +195,15 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
         allowed, why_not = compliance(reqs, getattr(client, "catalog", {}))
         stale_reason = (decision["data"].get("stale_reason")
                         if decision["data"].get("status") == "stale" else None)
-        cfg, created = candidates_mod.load_or_create(project, decision, pricing, allowed=allowed,
-                                                     refresh=stale_reason)
+        try:
+            cfg, created = candidates_mod.load_or_create(project, decision, pricing,
+                                                         allowed=allowed, refresh=stale_reason)
+        except LookupError as e:   # e.g. every free model is a candidate: none left to judge
+            out(f"Can't set up the fit check for decision #{decision_id}: {e}")
+            out(f"  Project override: {project / '.notbydefault' / 'providers.yaml'}; or list "
+                f"fewer candidates in {candidates_mod.config_path(project)}. Then run "
+                f"`python -m notbydefault check {decision_id}` again. No requests were made.")
+            return 3
         excluded = {}
         if allowed:
             excluded = {(m, setup): why_not(m) for m in cfg["candidates"] if not allowed(m)
@@ -191,7 +234,12 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
         out(f"  candidates:  {', '.join(cfg['candidates'])}"
             + (f"  (new: {candidates_mod.config_path(project)})" if created else ""))
         out(f"  setups:      each model alone, and + verifier with <= {cfg['max_retries']} retries")
-        out(f"  judges:      {', '.join(cfg['judges'])}    verifier model: {cfg['verifier_model']}")
+        out(f"  judges:      {', '.join(cfg['judges']) or 'none (reference-only scoring, if the inputs have references)'}"
+            + (f" (freed from the candidates: {cfg['freed_for_judge']})"
+               if cfg.get("freed_for_judge") else "")
+            + f"    verifier model: {cfg['verifier_model']}"
+            + ("   (preflight may still change the judge; changes are printed below)"
+               if cfg["judges"] else ""))
         out(f"  inputs:      {n_inputs} ({len(bank)} from failure bank, "
             + (f"{len(samples)} from {samples_mod.samples_path(project, decision_id)}"
                if samples else f"{opts.n_samples} synthetic to generate") + ")")
@@ -221,7 +269,8 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
         if hasattr(client, "on_event"):
             client.on_event = tracer.event      # 429 backoffs, retried calls, throttling
         run_at = datetime.now(timezone.utc)
-        state: dict = {"rows": [], "early": False}
+        state: dict = {"rows": [], "early": False, "judge_mode": "judge" if cfg["judges"]
+                       else "reference_only"}
         with tracer.root("notbydefault.check", {
                 "notbydefault.decision_id": decision_id, "notbydefault.literal": decision["label"],
                 "notbydefault.chosen": cfg["chosen"], "notbydefault.candidates": cfg["candidates"],
@@ -240,6 +289,12 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                              f"use {decision['label']} ({affected.source})"
                              + (f": {affected.note}" if affected.note else ""),
                              files=affected.files)
+                if cfg.get("freed_for_judge"):
+                    tracer.event("swap_candidate", "recovery",
+                                 f"every free model was a candidate; took {cfg['freed_for_judge']} "
+                                 "out of the comparison to act as judge",
+                                 old=cfg["freed_for_judge"], new=cfg["freed_for_judge"],
+                                 role="judge_from_candidate")
                 for model, why in cfg["why"].items():
                     tracer.event("judge_selected" if model in cfg["judges"] else "candidate_selected",
                                  "planning", why, model=model)
@@ -251,18 +306,37 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                  reason="probe each model once (cached) so unavailable models are "
                                         "swapped before the run, not halfway through"):
                     cfg = preflight(caller, cfg, pricing, project, decision, tracer, allowed)
+                for old, new, why in cfg.get("judge_changes", []):
+                    out(f"  judge changed: {old} -> {new or 'none'} ({why})")
+                if not cfg["judges"]:
+                    known = assemble_inputs(project, decision_id, samples) if samples else []
+                    if not has_references(known):
+                        state["early"], state["judge_mode"] = True, "none"
+                        tried = "; ".join(judge_attempts(cfg))
+                        tracer.event("no_judge_stop", "recovery",
+                                     f"no judge and no reference answers ({tried})")
+                        out(f"Can't run the fit check for decision #{decision_id}: no judge and "
+                            f"no reference answers to score against (tried: {tried}).")
+                        tracer.flush()
+                        return 5
+                    state["judge_mode"] = "reference_only"
+                    tracer.event("reference_only", "recovery",
+                                 "no judge model is available; scoring against the reference "
+                                 "answers only (no quality scores): " + "; ".join(judge_attempts(cfg)))
                 with tracer.step("context", "context",
                                  reason="understand the call site and gather test inputs"):
                     site = cached_site or callsite_mod.extract(
-                        caller.analyst(cfg["judge"]), project, decision, site)
+                        caller.analyst(analyst_model(cfg, pricing)), project, decision, site)
                     if samples is None:
                         tracer.event("generate_samples", "context",
                                      f"no samples file for decision #{decision_id} yet; generating "
                                      f"{opts.n_samples} synthetic inputs and saving them so runs "
                                      "are reproducible", added=opts.n_samples)
                         samples = samples_mod.generate(
-                            caller.analyst(cfg["judge"], max(8192, opts.n_samples * 400)), project,
-                            decision_id, site, n=opts.n_samples, generator=cfg["judge"])
+                            caller.analyst(analyst_model(cfg, pricing),
+                                           max(8192, opts.n_samples * 400)), project,
+                            decision_id, site, n=opts.n_samples,
+                            generator=analyst_model(cfg, pricing))
                     else:
                         tracer.event("load_samples", "context",
                                      f"reusing {len(samples)} saved inputs so results stay "
@@ -280,7 +354,8 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                      f"reusing reviewed verifiers in {_rel(vpath, project)}")
                     else:
                         verifiers = verifiers_mod.generate(
-                            caller.analyst(cfg["judge"]), project, decision, site, ctx, cfg["judge"])
+                            caller.analyst(analyst_model(cfg, pricing)), project, decision, site,
+                            ctx, analyst_model(cfg, pricing))
             except (BudgetExceeded, LLMError, ValueError, LookupError) as e:
                 state["early"] = True
                 if guard.halt_reason:
@@ -324,11 +399,18 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                       samples=inputs, judges=cfg["judges"])
                     project_monthly(stats, ctx["users"], cpu, ctx["budget"])
                     agreement = judge_agreement(rows, cfg["judges"])
+                    max_latency = opts.max_latency_s or ctx["max_latency_s"]
+                    slow = latency_exclusions(stats, max_latency)
+                    if slow:
+                        tracer.event("latency_requirement", "planning",
+                                     f"{len(slow)} setup(s) exceed the {max_latency:g}s latency "
+                                     "requirement and can't be recommended",
+                                     excluded=[stats[k].name for k in slow])
                     if has_references(inputs):
                         verdict = decide_with_references(stats, cfg["chosen"], ctx["budget"],
-                                                         excluded)
+                                                         {**excluded, **slow})
                     else:
-                        verdict = decide(stats, cfg["chosen"], excluded)
+                        verdict = decide(stats, cfg["chosen"], {**excluded, **slow})
                     if agreement.get("n"):
                         tracer.event("judge_agreement", "verification",
                                      f"judges agree within 1 point on {agreement['within_1']:.0%} of "
@@ -352,9 +434,9 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                     tracer.event("expand_sample", "iteration", reason, added=opts.expand_by,
                                  round=rnd + 1)
                     try:
-                        samples = samples_mod.extend(caller.analyst(cfg["judge"]), project,
+                        samples = samples_mod.extend(caller.analyst(analyst_model(cfg, pricing)), project,
                                                      decision_id, site, samples, opts.expand_by,
-                                                     reason, cfg["judge"])
+                                                     reason, analyst_model(cfg, pricing))
                     except (BudgetExceeded, LLMError, ValueError) as e:
                         tracer.event("expand_failed", "recovery",
                                      f"could not add inputs ({e}); keeping the current verdict")
@@ -391,7 +473,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                 stamp = run_at.strftime("%Y%m%dT%H%M%SZ")
                 results_path = labels_mod.results_dir(project) / f"{decision_id}-{stamp}.json"
                 results_path.parent.mkdir(parents=True, exist_ok=True)
-                used = sorted(set(cfg["candidates"]) | {cfg["judge"], cfg["verifier_model"]})
+                used = sorted(set(cfg["candidates"]) | set(cfg["judges"]) | {cfg["verifier_model"]})
                 prices = {m: {"usd_per_mtok_in": pricing.price(m).prompt * 1e6,
                               "usd_per_mtok_out": pricing.price(m).completion * 1e6,
                               "source": pricing.price(m).source_url,
@@ -402,7 +484,8 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                     judge=cfg["judge"], judges=cfg["judges"], agreement=agreement,
                     verifier_model=cfg["verifier_model"], case_rows=case_rows(rows, inputs),
                     bar=verdict.bar, best_quality=verdict.best_quality,
-                    caveats=caveats(inputs, cfg),
+                    max_latency_s=opts.max_latency_s or ctx["max_latency_s"],
+                    caveats=caveats(inputs, cfg, pricing),
                     verifier_checks=verifiers.names(), verifier_path=_rel(vpath, project),
                     max_retries=cfg["max_retries"], users=ctx["users"], calls_per_user=cpu,
                     budget=ctx["budget"], spent=guard.spent, pricing_source=pricing.source_url,
@@ -411,6 +494,10 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                     failures_path=_rel(failures_mod.bank_path(project, decision_id), project),
                     trust=labels_mod.agreement(project, decision_id), stopped=stopped,
                     free_tier=free, single_provider=_single_provider(cfg),
+                    judge_mode=state["judge_mode"],
+                    judge_note="; ".join(judge_attempts(cfg))
+                    if (state["judge_mode"] != "judge" or cfg.get("judge_tried")
+                        or str(cfg.get("judge_why", "")).startswith("freed")) else "",
                     trace_id=tracer.trace_id)
                 recoveries = {k: v for k, v in tracer.summary().items() if k in RECOVERY_EVENTS}
                 rctx.notes.append("Agent journal: "
@@ -476,8 +563,11 @@ def plan_text(decision: dict, cfg: dict, site, n_inputs: int, est: float,
     return (f"Test decision #{decision['id']} ({decision['label']} -> {cfg['chosen']}) at "
             f"{site.file}:{site.line}. Candidates: {', '.join(cfg['candidates'])}; each alone and "
             f"with the verifier (<= {cfg['max_retries']} retries). Inputs: {n_inputs} "
-            f"(failure bank first). Judge {cfg['judge']} scores blind; verifier model "
-            f"{cfg['verifier_model']}. If too close to call, add {opts.expand_by} inputs up to "
+            f"(failure bank first). "
+            + (f"Judge {cfg['judge']} scores blind" if cfg.get("judge")
+               else "No judge: reference-only scoring") +
+            f"; verifier model {cfg['verifier_model']}. If too close to call, add "
+            f"{opts.expand_by} inputs up to "
             f"{opts.expand_rounds}x. Estimated ${est:.4f} at list price, cap ${opts.max_cost:.2f}.")
 
 
@@ -485,8 +575,10 @@ def preflight(caller, cfg: dict, pricing, project: Path, decision: dict, tracer,
               allowed=None) -> dict:
     """Probe every model once; swap unavailable alternatives/judge for the next eligible model."""
     cfg = dict(cfg, candidates=list(cfg["candidates"]), why=dict(cfg["why"]),
-               judges=list(cfg["judges"]))
-    queue = [(m, "candidate") for m in cfg["candidates"]] + [(cfg["judge"], "judge")]
+               judges=list(cfg["judges"]), judge_tried=list(cfg.get("judge_tried") or []),
+               judge_changes=list(cfg.get("judge_changes") or []))
+    queue = [(m, "candidate") for m in cfg["candidates"]]
+    queue += [(cfg["judge"], "judge")] if cfg.get("judge") else []
     queue += [(j, "judge2") for j in cfg["judges"][1:]]
     if cfg["verifier_model"] not in cfg["candidates"]:
         queue.append((cfg["verifier_model"], "verifier"))
@@ -516,6 +608,9 @@ def preflight(caller, cfg: dict, pricing, project: Path, decision: dict, tracer,
                 new = next((m for m in cfg["candidates"] if m not in failed), None)
         except LookupError:
             new = None
+        if new is None and role == "judge":   # degrade: second judge, a freed candidate, or none
+            replace_judge(cfg, model, reason, failed, queue, pricing, project, decision, tracer)
+            continue
         if new is None:
             tracer.event("drop_candidate", "recovery",
                          f"{model} is unavailable ({reason}) and no free replacement is left; "
@@ -532,6 +627,8 @@ def preflight(caller, cfg: dict, pricing, project: Path, decision: dict, tracer,
         tracer.event("swap_candidate", "recovery",
                      f"{model} is unavailable ({reason}); swapping in {new}: {why}",
                      old=model, new=new, role=role)
+        if role in ("judge", "judge2"):
+            cfg["judge_changes"].append((model, new, f"unavailable: {reason}"))
         candidates_mod.swap(project, decision, role, model, new, reason)
         if role == "candidate":
             cfg["candidates"][cfg["candidates"].index(model)] = new
@@ -548,7 +645,80 @@ def preflight(caller, cfg: dict, pricing, project: Path, decision: dict, tracer,
     return cfg
 
 
-def caveats(inputs: list[dict], cfg: dict) -> list[str]:
+def judge_attempts(cfg: dict) -> list[str]:
+    """What was tried to get a judge, for the report and the exit message."""
+    tried = list(cfg.get("judge_tried") or [])
+    why = cfg.get("judge_why") or ""
+    if why.startswith(("no judge", "freed")) and why not in tried:
+        tried.insert(0, why)
+    return tried or ["no judge model configured"]
+
+
+def replace_judge(cfg: dict, model: str, reason: str, failed: set, queue: list, pricing,
+                  project: Path, decision: dict, tracer) -> bool:
+    """The judge is unavailable and no free model is left: promote a working second judge,
+    else free a non-current candidate to judge (a recorded swap). Returns False when neither
+    is possible; the run then has no judge (reference-only scoring, if it has references)."""
+    cfg["judge_tried"].append(f"judge {model} unavailable ({reason})")
+    second = next((j for j in cfg["judges"][1:] if j not in failed), None)
+    freed = None if second else candidates_mod.freeable_judge(
+        cfg["chosen"], cfg["candidates"], pricing, exclude=failed)
+    new = second or freed
+    if new is None:
+        cfg["judge_tried"].append("no second judge, and no non-current candidate can be freed "
+                                  "to judge (only today's model, or families not trusted as a "
+                                  "sole judge)")
+        tracer.event("no_judge", "recovery", f"{model} is unavailable ({reason}) and nothing can "
+                     "replace it; continuing without a judge", model=model)
+        candidates_mod.swap(project, decision, "no_judge", model, None, reason)
+        cfg.setdefault("judge_changes", []).append(
+            (model, None, f"unavailable: {reason}; nothing can replace it"))
+        cfg["judge"], cfg["judges"] = None, []
+        return False
+    if second:
+        why = f"promoted the second judge {second}"
+        candidates_mod.swap(project, decision, "judge", model, second, reason)
+        queue[:] = [(m, r) for m, r in queue if not (m == second and r == "judge2")]
+    else:
+        why = f"took candidate {freed} out of the comparison to judge"
+        candidates_mod.swap(project, decision, "judge_from_candidate", model, freed,
+                            f"judge {model} unavailable ({reason})")
+        cfg["candidates"].remove(freed)
+        queue[:] = [(m, r) for m, r in queue if m != freed]
+    cfg["judge_tried"].append(why)
+    cfg.setdefault("judge_changes", []).append((model, new, f"unavailable: {reason}; {why}"))
+    tracer.event("swap_candidate", "recovery", f"{model} is unavailable ({reason}); {why}",
+                 old=model, new=new, role="judge")
+    cfg["judge"] = new
+    cfg["judges"] = [new] + [j for j in cfg["judges"][1:] if j not in (model, new)]
+    cfg["why"].pop(model, None)
+    cfg["why"][new] = why
+    queue.insert(0, (new, "judge"))
+    return True
+
+
+def same_family_judges(cfg: dict, pricing) -> list[str]:
+    """Caveats for judges from the same model family as today's model (possible
+    self-preference), e.g. gpt-oss-20b judging gpt-oss-120b."""
+    if pricing is None:
+        return []
+    family = {m["id"]: m.get("family") for m in pricing.models}
+    today = family.get(cfg["chosen"])
+    out = []
+    for j in cfg.get("judges", []):
+        if not today or family.get(j) != today:
+            continue
+        # both ways of freeing a candidate record it as the judge's "why"
+        freed = str(cfg.get("why", {}).get(j, "")).startswith(("freed", "took candidate"))
+        out.append(f"Possible self-preference: the judge {j} is from the same model family "
+                   f"({today}) as today's model {cfg['chosen']}"
+                   + (", because it was freed from the candidates to judge" if freed else "")
+                   + "; read its quality scores with care (correctness against references is "
+                     "unaffected).")
+    return out
+
+
+def caveats(inputs: list[dict], cfg: dict, pricing=None) -> list[str]:
     """What a reader must know to weigh the evidence: revised cases, sample size, judges."""
     out = [f"Case {s.get('id') or i}: {s['revision_note']}."
            for i, s in enumerate(inputs) if s.get("revision_note")]
@@ -559,7 +729,7 @@ def caveats(inputs: list[dict], cfg: dict) -> list[str]:
            for j in cfg.get("judges", [])):
         out.append("A judge shares a provider with a candidate; compare the two judges' columns "
                    "for self-preference (correctness against references is unaffected).")
-    return out
+    return out + same_family_judges(cfg, pricing)
 
 
 def requirement_constraints(g: Graph) -> list[dict]:
@@ -649,7 +819,7 @@ def case_rows(rows, inputs: list[dict]) -> list[dict]:
 
 
 def _single_provider(cfg: dict) -> bool:
-    used = list(cfg["candidates"]) + [cfg["judge"], cfg["verifier_model"]]
+    used = list(cfg["candidates"]) + list(cfg["judges"]) + [cfg["verifier_model"]]
     return len({m.split(":", 1)[0] for m in used}) == 1
 
 
@@ -664,7 +834,8 @@ def check_summary(tracer, guard, state: dict) -> dict:
     return {"nbd.swap_count": int(tracer.summary().get("swap_candidate", 0)),
             "nbd.retry_rescued": rescued,
             "nbd.stopped_early": bool(state.get("early") or guard.stopped or guard.halt_reason),
-            "nbd.cost_usd": round(float(guard.spent), 6)}
+            "nbd.cost_usd": round(float(guard.spent), 6),
+            "nbd.judge_mode": state.get("judge_mode", "judge")}
 
 
 def save_journal(project: Path, decision_id: int, tracer, run_at: datetime, why: str) -> str:
@@ -683,7 +854,7 @@ def cache_dir(project: Path) -> Path:
 
 def _free_tier(client, cfg: dict) -> bool:
     free = getattr(client, "free_tier", None)
-    used = list(cfg["candidates"]) + [cfg["judge"], cfg["verifier_model"]]
+    used = list(cfg["candidates"]) + list(cfg["judges"]) + [cfg["verifier_model"]]
     return bool(free and free(used))
 
 

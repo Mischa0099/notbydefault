@@ -1639,41 +1639,34 @@
           "case": "fit-21-action-items",
           "split": "original",
           "decision_id": 21,
-          "status": "pending",
-          "reason": "the fit check stopped early at gemini:gemini-3.8-flash's daily free-tier limit, so the final judged run has not happened",
-          "stopped_model": "gemini:gemini-3.8-flash",
+          "status": "final",
+          "verdict": "switch",
+          "summary": "Cheapest setup that meets the bar: gemini:gemini-3.1-flash-lite, correct on 11/12 cases, 8/8 hard, verifier pass rate 92% [75%-100%], $0.000288/call, $345.07/month. Best quality within the budget: gemini:gemini-3.1-flash-lite, correct on 11/12 cases, 8/8 hard, item F1 0.98, $0.000288/call, $345.07/month.",
+          "recommended": [
+            "gemini:gemini-3.1-flash-lite",
+            "alone"
+          ],
           "judge": "gemini:gemini-3.8-flash",
-          "provisional_verdict": "switch",
-          "provisional_summary": "Cheapest setup that meets the bar: gemini:gemini-3.1-flash-lite, correct on 11/12 cases, 8/8 hard, verifier pass rate 100% [100%-100%], $0.000280/call, $335.48/month. Best quality within the budget: none; no setup fits $25.00/month at this volume.",
-          "journal": ".notbydefault/journal/21-20261010T180513Z-daily_limit.json",
-          "check_trace_id": "ec3345615ccc81fbde3d42df85165f6c",
-          "decision_status": "unreviewed",
-          "ok": false,
-          "needs": "the Gemini judge (gemini:gemini-3.8-flash); its free quota resets at midnight Pacific (12:30 IST)",
-          "resume": "python -m notbydefault check 21 --project demo-app"
+          "results": ".notbydefault/results/21-20261011T070521Z.json",
+          "check_trace_id": "4bcff389ab979638e4ffa7ee88619318",
+          "run_at": "2026-10-11T07:05:21.048167+00:00",
+          "ok": true
         }
       ],
-      "failures": [
-        {
-          "case": "fit-21-action-items",
-          "split": "original",
-          "pending": true,
-          "reason": "pending: the fit check stopped early at gemini:gemini-3.8-flash's daily free-tier limit, so the final judged run has not happened. Needs the Gemini judge (gemini:gemini-3.8-flash); its free quota resets at midnight Pacific (12:30 IST). Then run `python -m notbydefault check 21 --project demo-app` and `notbydefault eval --sections fit`."
-        }
-      ],
+      "failures": [],
       "metrics": {
         "cases": 1,
-        "passed": 0,
-        "final": 0,
-        "pending": 1
+        "passed": 1,
+        "final": 1,
+        "pending": 0
       },
       "heldout_metrics": null,
-      "trace_id": "41c2db8c3a3abcb59af4c2420d15be29",
+      "trace_id": "650357cec763c1f22a007a737b1c3aec",
       "seconds": 0.0
     }
   },
-  "run_at": "2026-10-11T06:15:36+00:00",
-  "commit": "64580da",
+  "run_at": "2026-10-11T07:21:34+00:00",
+  "commit": "44b4fc1",
   "telemetry": {
     "exporter": "neatlogs",
     "export": "ok",

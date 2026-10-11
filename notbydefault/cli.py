@@ -106,7 +106,7 @@ def cmd_check(args) -> int:
     from notbydefault.fit.run import CheckOptions, check_model_decision
     opts = CheckOptions(max_cost=args.max_cost, yes=args.yes,
                         calls_per_user=args.calls_per_user, n_samples=args.samples,
-                        expand_rounds=args.expand_rounds)
+                        expand_rounds=args.expand_rounds, max_latency_s=args.max_latency)
     from notbydefault.awake import keep_awake
     with keep_awake():
         return check_model_decision(project, args.decision_id, opts)
@@ -206,6 +206,17 @@ def cmd_pivot(args) -> int:
         stale = resolve(g, p, args.choice, "(recorded with `notbydefault pivot`)")
     print(f"Pivot #{args.pivot_id}: {args.choice}"
           + (f"; decisions now stale: {', '.join(f'#{d}' for d in stale)}" if stale else ""))
+    return 0
+
+
+def cmd_reverify(args) -> int:
+    """Re-run a fit check's saved outputs through a verifier file (read-only, no requests)."""
+    import json as _json
+    from notbydefault.fit.reverify import reverify
+    report = reverify(Path(args.project), args.decision_id, Path(args.verifiers),
+                      Path(args.results) if args.results else None)
+    if args.out:
+        Path(args.out).write_text(_json.dumps(report, indent=2), encoding="utf-8")
     return 0
 
 
@@ -319,6 +330,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--calls-per-user", type=float,
                    help="calls per user per month (asked once, default 30)")
     p.add_argument("--samples", type=int, default=8, help="synthetic inputs to generate")
+    p.add_argument("--max-latency", type=float, metavar="SECONDS",
+                   help="latency requirement: setups slower than this (avg per call, incl. "
+                        "retries) can't be recommended")
     p.add_argument("--expand-rounds", type=int, default=1,
                    help="times to add 4 inputs when the verdict is too close to call (default 1)")
     p.set_defaults(func=cmd_check)
@@ -367,6 +381,15 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", default=".", help="project dir (default: current dir)")
     p.add_argument("-n", type=int, default=10, help="outputs to label (default 10)")
     p.set_defaults(func=cmd_label)
+
+    p = sub.add_parser("reverify",
+                       help="re-run a fit check's saved outputs through a verifier file (no requests)")
+    p.add_argument("decision_id", type=int)
+    p.add_argument("--verifiers", required=True, help="the (new) verifier file to compare")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--results", help="results file (default: the decision's latest)")
+    p.add_argument("--out", help="also write the before/after report as JSON here")
+    p.set_defaults(func=cmd_reverify)
 
     p = sub.add_parser("eval", help="measure NotByDefault on cases with known right answers")
     p.add_argument("--version", default="v1", help="results name: eval/results/<version>.json")

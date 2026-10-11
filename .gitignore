@@ -6,3 +6,4 @@ __pycache__/
 .venv/
 demo-app/.demo-run/
 eval/.cache/
+eval/.telemetry/

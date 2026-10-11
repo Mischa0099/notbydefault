@@ -95,6 +95,23 @@ def pick_judge(exclude: list[str], pricing: Pricing) -> str:
                                     typical_cost(pricing.price(m["id"]))))["id"]
 
 
+def freeable_judge(chosen: str, candidates: list[str], pricing: Pricing,
+                   exclude: set | frozenset = frozenset()) -> str | None:
+    """A non-current candidate that may be taken out of the comparison to act as judge, or None.
+
+    Same trust rules as pick_judge (a preferred judge family first, never a family in
+    JUDGE_FALLBACK_SKIP); among those, one from another family than today's model (less
+    self-preference), then the strongest."""
+    family = _entry(pricing, chosen).get("family")
+    pool = [_entry(pricing, m) for m in candidates if m != chosen and m not in exclude]
+    pool = [m for m in pool if m.get("family") in JUDGE_FAMILIES] or \
+        [m for m in pool if m.get("family") not in JUDGE_FALLBACK_SKIP]
+    if not pool:
+        return None
+    return max(pool, key=lambda m: (m.get("family") != family, m.get("strength") or 0,
+                                    typical_cost(pricing.price(m["id"]))))["id"]
+
+
 def pick_second_judge(exclude: list[str], first: str, pricing: Pricing) -> str | None:
     """A strong judge from a different family than the first, to expose self-preference.
 
@@ -153,16 +170,35 @@ def load_or_create(project: Path, decision: dict, pricing: Pricing, allowed=None
         entries += [_price_entry(m, "alternative", pricing) for m in alternatives]
         for e in entries:
             e["why"] = why_picked(e["model"], chosen, pricing)
-        judge = pick_judge([e["model"] for e in entries], pricing)
-        second = pick_second_judge([e["model"] for e in entries], judge, pricing)
+        swaps = []
+        try:
+            judge = pick_judge([e["model"] for e in entries], pricing)
+            judge_why = (f"strongest free model (family {_entry(pricing, judge).get('family')}, "
+                         "strength rank) that is not a candidate")
+        except LookupError:
+            # every free model is a candidate: take one out of the comparison to judge
+            judge = freeable_judge(chosen, [e["model"] for e in entries], pricing)
+            if judge:
+                entries = [e for e in entries if e["model"] != judge]
+                judge_why = ("freed from the candidates to judge: every free model was a "
+                             "candidate, none was left to act as judge")
+                swaps.append({"role": "judge_from_candidate", "old": judge, "new": judge,
+                              "reason": "every free model was a candidate",
+                              "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+            else:
+                judge_why = ("no judge: every free model is a candidate and none can be freed "
+                             "(only today's model, or families not trusted as a sole judge); "
+                             "reference-only scoring")
+        second = (pick_second_judge([e["model"] for e in entries] + [judge], judge, pricing)
+                  if judge else None)
+        alternatives = [e["model"] for e in entries if e["model"] != chosen]
         decisions[key] = {
             "literal": decision["label"],
             "chosen": chosen,
             "candidates": entries,
             "judge": judge,
-            "judge_why": (f"strongest free model (family {_entry(pricing, judge).get('family')}, "
-                          "strength rank) that is not a candidate"),
-            "judges": [judge] + ([second] if second else []),
+            "judge_why": judge_why,
+            "judges": ([judge] if judge else []) + ([second] if second else []),
             "second_judge_why": (f"strongest non-candidate outside the {_entry(pricing, judge).get('family')} "
                                  "family, to check the first judge for self-preference")
             if second else "no second judge available",
@@ -172,6 +208,8 @@ def load_or_create(project: Path, decision: dict, pricing: Pricing, allowed=None
             "verifier_why": "cheapest candidate: verified setups pay for every rubric check",
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
+        if swaps:
+            decisions[key]["swaps"] = swaps
         if previous:
             decisions[key]["history"] = (previous.pop("history", []) or []) + [previous]
         if refresh:
@@ -187,20 +225,26 @@ def load_or_create(project: Path, decision: dict, pricing: Pricing, allowed=None
         created = True
     entry = decisions[key]
     judges = entry.get("judges")
-    if not judges:   # entries written before two-judge support
+    if judges is None and entry.get("judge"):   # entries written before two-judge support
         second = pick_second_judge([c["model"] for c in entry["candidates"]], entry["judge"],
                                    pricing)
         judges = [entry["judge"]] + ([second] if second else [])
+    judges = judges or []
     why = {c["model"]: c.get("why") or "listed in candidates.yaml" for c in entry["candidates"]}
-    why[entry["judge"]] = entry.get("judge_why") or "judge listed in candidates.yaml"
+    if entry.get("judge"):
+        why[entry["judge"]] = entry.get("judge_why") or "judge listed in candidates.yaml"
     for j in judges[1:]:
         why[j] = entry.get("second_judge_why") or "second judge from another family"
+    freed = [s_["old"] for s_ in entry.get("swaps", []) if s_.get("role") == "judge_from_candidate"]
     return {
         "chosen": entry["chosen"],
         "judges": judges,
         "candidates": [c["model"] for c in entry["candidates"]],
         "why": why,
-        "judge": entry["judge"],
+        "judge": entry.get("judge"),
+        "judge_why": entry.get("judge_why", ""),
+        # a candidate freed to judge in this call (the run records it as a swap)
+        "freed_for_judge": freed[-1] if created and freed else None,
         "verifier_model": entry.get("verifier_model") or entry["chosen"],
         "max_retries": int(doc.get("max_retries", DEFAULTS["max_retries"])),
         "temperature": float(doc.get("temperature", DEFAULTS["temperature"])),
@@ -223,6 +267,13 @@ def swap(project: Path, decision: dict, role: str, old: str, new: str, reason: s
     elif role == "judge2":
         entry["judges"] = [new if j == old else j for j in entry.get("judges", [])]
         entry["second_judge_why"] = f"replaced {old}: {reason}"
+    elif role == "judge_from_candidate":   # candidate `new` leaves the comparison to judge
+        entry["candidates"] = [c for c in entry["candidates"] if c["model"] != new]
+        entry["judge"], entry["judge_why"] = new, f"freed from the candidates to judge: {reason}"
+        entry["judges"] = [new] + [j for j in entry.get("judges", []) if j not in (old, new)]
+    elif role == "no_judge":
+        entry["judge"], entry["judges"] = None, []
+        entry["judge_why"] = f"no judge: {reason}; reference-only scoring"
     if entry.get("verifier_model") == old:
         entry["verifier_model"], entry["verifier_why"] = new, f"replaced {old}: {reason}"
     entry.setdefault("swaps", []).append({

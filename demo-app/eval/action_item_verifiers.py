@@ -5,6 +5,7 @@ Production checks (run on every output, failures are fed back on retry):
   - every owner appears in the notes (no invented people)
   - every due date is one the notes actually mention, resolved with the prompt's date rules
   - dates are real calendar dates written as YYYY-MM-DD
+  - no item is missing a due date the notes clearly state for it
 Evaluation-only checks (need a reference answer; never used as retry hints, because
 production has no reference answers):
   - no reference action item is missing
@@ -34,6 +35,7 @@ CHECKS = [
     owners_in_input(why="An owner who isn't in the notes is an invented fact."),
     dates_in_input(why="A due date the notes don't support is an invented fact."),
     dates_normalized(why="Downstream code expects ISO dates or null."),
+    due_dates_present(why="A due date the notes state but the output drops is a lost deadline."),
     no_missing_items(why="Evaluation only: a dropped action item is the costliest error."),
     no_extra_items(why="Evaluation only: cancelled or reassigned-away items must not appear."),
 ]

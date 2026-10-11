@@ -118,9 +118,14 @@ class ResponseCache:
     def put(self, key: str, record: dict) -> None:
         path = self._path(key)
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
+        # one temp file per writer: two threads can put the same key at once (identical
+        # requests), and on Windows a shared temp name makes the second rename fail
+        tmp = path.with_name(f"{path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
         tmp.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(path)
+        try:
+            tmp.replace(path)
+        except PermissionError:      # another writer is replacing it right now: same answer
+            tmp.unlink(missing_ok=True)
 
     def count(self) -> int:
         return sum(1 for _ in self.folder.glob("*/*.json")) if self.folder.exists() else 0
