@@ -1,0 +1,10 @@
+<pasted_content id="2355">
+Build `notbydefault resolve <decision_id>`: an end-to-end agent for one decision.
+Plan -> investigate (graph, affected code via Entire Graph, past records, failure bank) -> run or reuse the fit check -> recommend -> on approval, create branch nbd/<id>-<slug> and apply the change at every affected call site -> run the project's tests and the decision's verifiers on the new code -> write the decision record and a PR description (evidence table, trace IDs, checkpoint links) -> stop.
+Rules: never touch main, never push, never commit without asking; dry-run by default (--apply to change files); every step is a neatlogs span with focus_area tags and an nbd.resolve_step attribute; recover from a failed step (retry once with the error, else stop with a clear message and leave the branch clean).
+Demo it on a throwaway copy of demo-app for decision #21 (switch to gemini-3.1-flash-lite). Tests for each step and for the failure paths. Stage and write msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="2355">
+
+---
+
+retry
