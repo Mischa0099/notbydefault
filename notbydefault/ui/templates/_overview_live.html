@@ -1,5 +1,6 @@
 {% from "_macros.html" import feed %}
 <div id="overview-live" hx-get="/fragments/overview?v={{ version }}" hx-trigger="every 2s" hx-swap="outerHTML">
+{% if ov.debt %}<p class="small muted debt-line">{{ DEBT_LINE }}</p>{% endif %}
 <section class="tiles" aria-label="Headline numbers">
   <a class="tile ink" href="/decisions"><div class="n">{{ ov.decisions }}</div><div class="l">decisions caught</div><div class="sub">{{ ov.by_default }} chosen by default</div></a>
   <a class="tile{{ ' zero' if not ov.count.unreviewed }}" href="/decisions?status=unreviewed"><div class="n">{{ ov.count.unreviewed }}</div><div class="l">unreviewed</div><div class="sub">no fit check yet</div></a>

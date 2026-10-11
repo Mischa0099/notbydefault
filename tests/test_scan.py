@@ -34,7 +34,7 @@ def test_expired_after_watch_points_at_a_new_check(checked):  # noqa: F811
         r = scan.compute(p, g, client.catalog)
     [row] = [x for x in r["rows"] if x["count"] == "assumption expired"]
     assert row["next"] == f"notbydefault check {did}"
-    assert "'data region: any' broken by 'EU only'" in row["why"]
+    assert "'data region: any' broken by requirement 'EU only'" in row["why"]
 
 
 def test_audit_finds_choices_in_the_code_that_no_decision_records(tmp_path):
@@ -58,9 +58,10 @@ def test_scan_prints_the_score_and_table_and_record_adds_the_findings(tmp_path):
         claims.store(p, g, did, claims.evaluate(p, g, g.get_node(did), make_client(), split=False))
     out = []
     assert scan.scan(p, out=out.append) == 0
-    assert out[0] == ("Decision debt: 2  (2 unchecked, 1 of them not in the graph / 0 claim(s) "
+    assert out[0] == scan.DEBT_LINE
+    assert out[1] == ("Decision debt: 2  (2 unchecked, 1 of them not in the graph / 0 claim(s) "
                       "false / 0 with expired assumptions)")
-    table = out[2].splitlines()
+    table = out[3].splitlines()
     assert table[0].split() == ["count", "#", "decision", "next", "command", "why"]
     assert any(l.startswith("unchecked") and f"notbydefault check {did}" in l for l in table)
     out = []

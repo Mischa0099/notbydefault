@@ -244,6 +244,7 @@ def test_require_marks_affected_decisions_stale(project):
     with Graph.for_project(p) as g:
         [req] = [n for n in g.nodes("requirement") if n["data"].get("source") == "require"]
         assert req["data"]["constraints"] == {"data_residency": "EU"}
+        assert req["data"]["constraints_source"] == "model"
         model = g.get_node(did)["data"]
         assert model["status"] == "stale" and "documents data residency" in model["stale_reason"]
         assert model["stale_basis"] == "provider documentation"
@@ -257,6 +258,22 @@ def test_require_marks_affected_decisions_stale(project):
     assert "1 of 2 decisions NEED REVIEW" in report
     assert report.index("STALE") < report.index("#" + str(db) + " MongoDB")
     assert "code:  actions.py" in report and "code:  requirements.txt" in report
+
+
+def test_failed_extraction_still_reads_the_region_the_text_names(project):
+    from notbydefault.llm import LLMError
+
+    class Down(FakeTransport):
+        def complete(self, *a, **k):
+            raise LLMError("no key")
+    p, did, _db = project
+    code, report, _ = run_require(p, "data must stay in the EU", Down())
+    assert code == 0
+    with Graph.for_project(p) as g:
+        [req] = [n for n in g.nodes("requirement") if n["data"].get("source") == "require"]
+        assert req["data"]["constraints"] == {"data_residency": "EU"}
+        assert req["data"]["constraints_source"] == "regex-fallback"
+        assert g.get_node(did)["data"]["status"] == "stale"     # Groq documents US only
 
 
 def test_model_judgement_alone_never_marks_stale(project):

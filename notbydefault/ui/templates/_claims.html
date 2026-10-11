@@ -1,14 +1,14 @@
 {% from "_macros.html" import trace, file %}
 <div class="grid-2">
 <section>
-  <div class="section-title"><h2>Claim check</h2><span class="src">{% if v.claims %}{{ v.claims.reason_source }} · split by {{ v.claims.classified_by }} · {{ v.claims.checked_at|when }}{% else %}<code>notbydefault claims {{ d.id }}</code>{% endif %}</span></div>
+  <div class="section-title"><h2>{{ CLAIM_TITLE }}</h2><span class="src">{% if v.claims %}{{ v.claims.reason_source }} · split by {{ v.claims.classified_by }} · {{ v.claims.checked_at|when }}{% else %}<code>notbydefault claims {{ d.id }}</code>{% endif %}</span></div>
   {% if v.claims %}
   <blockquote class="agent-reason">“{{ v.claims.reason[:500] }}{{ "…" if v.claims.reason|length > 500 }}”</blockquote>
   {% if v.claims["items"] %}
   <ul class="claims">
     {% for c in v.claims["items"] %}
     <li class="claim v-{{ c.verdict }}">
-      <span class="verdict">{{ c.verdict }}</span>
+      <span class="verdict">{{ CLAIM_SYMBOL[c.verdict] }} {{ c.verdict }}</span>
       <div class="claim-body">
         <div><span class="tag">{{ c.type }}</span> “{{ c.text }}”</div>
         <div class="small">{{ c.detail }}</div>
@@ -27,7 +27,7 @@
   {% if v.watched and v.watched["items"] %}
   <ul class="ruled small">
     {% for b in v.watched.broken or [] %}
-    <li class="broken"><span class="pill bad">broken</span> <b>{{ b.label }}</b>: was {{ b.was|fmtval }}, now {{ b.now|fmtval }} <span class="muted">· broken by {{ b.cause }}</span></li>
+    <li class="broken"><span class="pill bad">broken</span> <b>{{ b.label }}</b>: was {{ b.was|fmtval }}, now {{ b.now|fmtval }} <span class="muted">· broken by {% if b.cause_type %}{{ b.cause_type }} {% endif %}{{ b.cause }}</span></li>
     {% endfor %}
     {% set broken_keys = (v.watched.broken or [])|map(attribute="key")|list %}
     {% for i in v.watched["items"] if i.key not in broken_keys %}

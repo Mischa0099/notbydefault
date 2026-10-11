@@ -55,6 +55,8 @@ EVAL_ONLY_CHECKS = {"no_missing_items", "no_extra_items"}
 
 
 FREE_TIER_LABEL = "Run on free tier; costs are list-price estimates."
+FIT_LINE = ("Multi-candidate workload evaluation on your own data. Shared benchmarks are a prior, "
+            "not proof.")
 
 
 def _money(x: float | None, digits: int = 2) -> str:
@@ -284,7 +286,7 @@ def render(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
              + (f"  [judge: {ctx.judge}, single-provider run]"
                 if ctx.single_provider and ctx.judge else ""),
              "",
-             summary_text(stats, verdict, ctx), "", text_table(rows), ""]
+             summary_text(stats, verdict, ctx), "", FIT_LINE, text_table(rows), ""]
     if ctx.has_references:
         lines += ["Recommendations:",
                   f"  1. Cheapest setup that meets the bar: {stats[verdict.recommended].name}",
@@ -330,7 +332,7 @@ def write_decision_record(project: Path, stats: dict, verdict: Verdict,
         *([f"- {FREE_TIER_LABEL}"] if ctx.free_tier else []),
         f"- Decision graph node: #{ctx.decision_id} (`{ctx.literal}` -> `{ctx.chosen}`)", "",
         "## Context", "", summary_text(stats, verdict, ctx), "",
-        "## Setups tested", "", markdown_table(table_rows(stats, ctx)), "",
+        "## Setups tested", "", FIT_LINE, "", markdown_table(table_rows(stats, ctx)), "",
         "## Verdict", "", verdict.summary, "",
     ]
     if ctx.has_references:

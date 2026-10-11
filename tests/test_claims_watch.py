@@ -45,6 +45,15 @@ def test_keyword_split_types_every_kind_of_claim():
     assert "Everyone uses it" in got["popularity"]
 
 
+def test_keyword_split_finds_each_claim_in_a_comma_list():
+    got = claims.keyword_claims("openai/gpt-oss-120b: cost-effective, strong at structured "
+                                "extraction, widely used in production")
+    assert got == [{"type": "cost", "text": "cost-effective"},
+                   {"type": "quality", "text": "strong at structured extraction"},
+                   {"type": "popularity", "text": "widely used in production"}]
+    assert [c["type"] for c in claims.keyword_claims("cheap; fast")] == ["cost", "latency"]
+
+
 def test_reason_from_the_hook_event_uses_description_and_transcript(tmp_path):
     t = tmp_path / "t.jsonl"
     t.write_text("\n".join(json.dumps(r) for r in [
@@ -87,9 +96,11 @@ def test_claims_are_checked_against_the_fit_check_and_documented_facts(checked):
     assert "not evidence for your project" in by["popularity"]["detail"]
     assert by["maturity"]["verdict"] == "untested"
     # shown in the check report and the decision record
-    assert "Claim check: the agent's reason (session transcript) makes 6 claim(s)" in report
+    assert ("Claim check: the agent's reasons, tested\n"
+            "The agent's reason (session transcript) makes 6 claim(s)") in report
     record = (p / node(p, did)["data"]["decision_record"]).read_text(encoding="utf-8")
-    assert "### Claim check" in record and "**FALSE** (compliance)" in record
+    assert "### Claim check: the agent's reasons, tested" in record
+    assert "✗ **FALSE** (compliance)" in record
 
 
 def test_cost_and_latency_verdicts_follow_the_numbers(checked):
@@ -103,6 +114,27 @@ def test_cost_and_latency_verdicts_follow_the_numbers(checked):
     expected = cur["fits_budget"] is not False and cur["avg_cost"] <= cheapest["avg_cost"] * 1.05
     assert by["cost"]["verdict"] == ("true" if expected else "false")
     assert f"${cur['avg_cost']:,.6f}/call" in by["cost"]["detail"]
+
+
+def test_quality_claim_is_false_when_an_in_budget_setup_scored_higher():
+    def row(name, model, correct, fits):
+        return {"name": name, "model": model, "setup": "alone" if "+" not in name else "verified",
+                "n_ref": 12, "correct_rate": correct / 12, "fits_budget": fits}
+    stats = {"a": row("groq:openai/gpt-oss-120b", "groq:openai/gpt-oss-120b", 10, False),
+             "b": row("gemini:gemini-3.1-flash-lite", "gemini:gemini-3.1-flash-lite", 11, True),
+             "c": row("gemini:gemini-3.1-flash-lite + verifier", "gemini:gemini-3.1-flash-lite",
+                      12, False)}
+    ctx = {"decision": {"id": 21}, "results_rel": "r.json",
+           "results": {"config": {"chosen": "groq:openai/gpt-oss-120b"}, "stats": stats,
+                       "trace_id": "4bcff389"}}
+    claim = {"text": "strong at structured extraction"}
+    v = claims.check_quality(claim, ctx)
+    assert v["verdict"] == "false"
+    assert v["detail"] == "10/12 vs 11/12 at gemini-3.1-flash-lite, within budget"
+    assert v["trace_id"] == "4bcff389"
+    stats["b"]["correct_rate"] = 10 / 12           # nothing within budget scored higher
+    v = claims.check_quality(claim, ctx)
+    assert v["verdict"] == "true" and "no in-budget candidate scored higher" in v["detail"]
 
 
 def test_model_split_keeps_only_quoted_claims(tmp_path):
@@ -175,7 +207,7 @@ def test_watch_reopens_a_decision_when_a_requirement_breaks_an_assumption(checke
                                               "constraints": {"data_residency": "EU"}})
     out = []
     assert watch_mod.watch(p, client=client, out=out.append) == 0
-    assert f"re-opened #{did}: 'data region: any' broken by 'EU only'" in out
+    assert f"re-opened #{did}: 'data region: any' broken by requirement 'EU only'" in out
     d = node(p, did)["data"]
     assert d["status"] == "needs_review" and d["review_basis"] == "watched assumption"
     assert d["assumptions"]["broken"][0]["now"] == "EU"

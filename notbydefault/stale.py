@@ -319,10 +319,16 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
                                     span="notbydefault.extract_constraints", role="stale_judge",
                                     max_tokens=1000, json_mode=True, focus_area="tool_use")
                 raw = parse_json(reply.text)
+                extracted_by = "model"
             except (LLMError, BudgetExceeded) as e:
+                # the region the text itself names still counts (grounded() keeps only that)
+                raw = {"data_residency": next((r for r in REGION_CODES if states_region(text, r)),
+                                              None)}
+                extracted_by = "regex-fallback"
                 tracer.event("extract_failed", "recovery",
-                             f"could not extract constraints ({e}); judging with the text only")
-                raw = {}
+                             f"could not extract constraints ({e}); judging with the text only"
+                             + (f" (data residency {raw['data_residency']} read from the text)"
+                                if raw["data_residency"] else ""))
             from notbydefault.pivot import volume
             constraints, dropped = grounded(raw, text, volume(g)["users"])
             if dropped:
@@ -331,7 +337,8 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
                              + "; ".join(dropped), dropped=dropped)
         with tracer.step("add_requirement", "state", reason="record the new requirement"):
             rid = g.add_node("requirement", text, {
-                "source": "require", "constraints": constraints, "added_at": now,
+                "source": "require", "constraints": constraints,
+                "constraints_source": extracted_by, "added_at": now,
                 "summary": str(raw.get("summary") or "")})
             tracer.event("requirement_added", "state", f"#{rid}: {text}", requirement_id=rid,
                          constraints=constraints)

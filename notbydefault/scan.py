@@ -25,6 +25,10 @@ class Found:
     evidence: str
 
 
+DEBT_LINE = ("Decision debt: choices that are unchecked, whose claims proved false, or whose "
+             "assumptions have expired.")
+
+
 def unchecked(d: dict) -> bool:
     data = d["data"]
     return not data.get("verdict") and not data.get("reason") \
@@ -148,6 +152,7 @@ def scan(project: Path, record: bool = False, out=print) -> int:
                 + ", ".join(f"#{i}" for i in ids))
             r = compute(project, g)
     unchecked_n = len(r["unchecked"]) + len(r["unrecorded"])
+    out(DEBT_LINE)
     out(f"Decision debt: {r['score']}  ({unchecked_n} unchecked"
         + (f", {len(r['unrecorded'])} of them not in the graph" if r["unrecorded"] else "")
         + f" / {len(r['claims_false'])} claim(s) false / "

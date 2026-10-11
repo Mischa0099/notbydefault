@@ -189,10 +189,10 @@ def by_default(d: dict) -> bool:
 
 def last_evidence(snap: Snapshot, d: dict) -> str:
     data = d["data"]
-    if data.get("status") == "stale":
-        return f"stale: {data.get('stale_reason') or 'marked stale'}"
-    if data.get("status") == "needs_review":
-        return f"needs review: {data.get('review_reason') or ''}"
+    from notbydefault.records import status_line
+    line = status_line(data)
+    if line:
+        return line
     ev = sorted(snap.out(d["id"], "supported_by"), key=lambda n: n["id"])
     fit = [e for e in ev if e["data"].get("kind") == "fit_test"]
     if fit:
@@ -493,7 +493,8 @@ def events(project: Path, snap: Snapshot) -> list[Event]:
         data = p["data"]
         ids = data.get("decisions") or []
         ev.append(Event(parse_time(data.get("proposed_at") or p["created_at"]), "pivot",
-                        f"Pivot proposed: {p['label']}",
+                        f"Pivot proposed: {p['label']}"
+                        + (" (seeded demo record)" if data.get("source") == "seeded" else ""),
                         "; ".join(c.get("why", "") for c in data.get("conflicts") or [])[:300],
                         f"/nodes/{p['id']}", [_effect(snap, i) for i in ids]))
         if data.get("resolved_at"):

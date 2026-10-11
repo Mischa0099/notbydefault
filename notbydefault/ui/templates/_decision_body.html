@@ -30,6 +30,7 @@
   <span class="src">{% if v.fit %}{{ file(v.fit.results) }} · run {{ v.fit.run_at|when }}{% else %}no fit check{% endif %}</span></div>
 {% if v.fit %}
 {% set f = v.fit %}
+<p class="small fit-line">{{ FIT_LINE }}</p>
 <div class="table-wrap"><table class="fit">
   <thead><tr>{% for h in f.table.headers %}<th{% if not loop.first %} class="num"{% endif %}>{{ h }}</th>{% endfor %}</tr></thead>
   <tbody>

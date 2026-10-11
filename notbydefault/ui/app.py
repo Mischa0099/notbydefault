@@ -69,10 +69,17 @@ def make_env() -> Environment:
     env = Environment(loader=FileSystemLoader(str(HERE / "templates")),
                       autoescape=select_autoescape(default=True, default_for_string=True))
     from notbydefault.assumptions import _fmt
+    from notbydefault.records import status_line
     env.filters.update(fmtval=_fmt, diff=_diff, ago=_ago, when=_when, money=_money, md=mdlite.render,
                        status_text=lambda s: STATUS_TEXT.get(s, s or "-"),
                        kind_text=lambda k: KIND_TEXT.get(k, k),
-                       pct=lambda v: "-" if v is None else f"{v:.0%}")
+                       pct=lambda v: "-" if v is None else f"{v:.0%}",
+                       status_line=lambda data: status_line(data) or "")
+    from notbydefault.claims import CLAIM_SYMBOL, CLAIM_TITLE
+    from notbydefault.fit.report import FIT_LINE
+    from notbydefault.scan import DEBT_LINE
+    env.globals.update(CLAIM_TITLE=CLAIM_TITLE, CLAIM_SYMBOL=CLAIM_SYMBOL, FIT_LINE=FIT_LINE,
+                       DEBT_LINE=DEBT_LINE)
     return env
 
 

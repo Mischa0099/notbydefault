@@ -157,18 +157,20 @@ Live mode polls a file-stat version every 2 s; the graph animates new nodes in.
 
 ## Demo dataset
 
-`python scripts/demo_dataset.py` builds `.demo-dataset/demo-app` (gitignored) from a throwaway
-copy of demo-app (graph copied with SQLite's backup API, so the live one is never touched) and
-runs the whole loop on it: `watch` baseline; `resolve 21` dry run then `--apply` on its own
-branch (to the fit check's recommendation, gemini-3.1-flash-lite, verified from the response
-cache); the pivot prompt through the UserPromptSubmit hook; the EU data-residency requirement
-(lands on the resolved #21: Gemini guarantees no region, so needs review, while #13 on Groq goes
-stale); an agent turn through the PreToolUse hook whose stated reason comes from a scripted,
-labelled transcript (`scripts/demo_transcript.jsonl`); `claims` on that decision; `watch`;
-`scan`. It prints every neatlogs trace id it created. A rebuild reuses the previous build's
-model-response cache (`--fresh` ignores it; `--offline` skips the Groq steps).
-`python scripts/ui_screenshots.py --project .demo-dataset/demo-app --claims-decision <id>`
-renders every page from it.
+`python scripts/demo_dataset.py --out .demo-dataset/demo-app` resets that copy (gitignored) from
+demo-app (graph copied with SQLite's backup API, so the live one is never touched) and runs the
+whole loop on it: `watch` baseline; scripted, labelled agent reasons on #7, #9, #10, #13, #21;
+`resolve 21` dry run then `--apply` on its own branch; one pivot ("let's drop verifiers, they
+slow things down": the real Pivot Check runs, and when it records nothing a pivot marked
+`source=seeded` is written); an agent turn through the PreToolUse hook (reason from the scripted
+`scripts/demo_transcript.jsonl`); `claims` on every reasoned decision (#21: cost and quality
+false, popularity untested); the requirement "data must stay in the EU" (#21, now on Gemini, needs
+review; #13 on Groq goes stale); `watch`; `scan`; then `scripts/ui_screenshots.py` regenerates
+docs/screenshots in light and dark (`--no-shots` skips it). Every step prints the trace id, the
+graph ids and the files it wrote. Model calls come from the copy's response cache (carried over
+unless `--fresh`); each call that would reach a provider is printed, and `--offline` skips them
+(claims fall back to the keyword split, require to the region the text names, the pivot to the
+seeded record).
 
 ## Tests
 

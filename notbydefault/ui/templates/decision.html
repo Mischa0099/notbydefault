@@ -49,7 +49,7 @@
       {% if v.depends %}
       <ul class="plain">{% for n in v.depends %}<li><span class="tag">{{ n.edge_type }}</span> <a href="/nodes/{{ n.id }}">{{ n.label }}</a>{% if n.data.assumption %} <mark class="assume">ASSUMPTION</mark>{% endif %}</li>{% endfor %}</ul>
       {% else %}<p class="muted small">No goal, requirement or constraint linked.</p>{% endif %}
-      {% if v.pivots %}<h3>Pivots</h3><ul class="plain">{% for p in v.pivots %}<li>{{ pill(p.data.status or "proposed") }} <a href="/nodes/{{ p.id }}">{{ p.label }}</a></li>{% endfor %}</ul>{% endif %}
+      {% if v.pivots %}<h3>Pivots</h3><ul class="plain">{% for p in v.pivots %}<li>{{ pill(p.data.status or "proposed") }} <a href="/nodes/{{ p.id }}">{{ p.label }}</a>{% if p.data.source == "seeded" %} <span class="muted small">(seeded demo record, not a detection)</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
     </section>
   </aside>
 </div>

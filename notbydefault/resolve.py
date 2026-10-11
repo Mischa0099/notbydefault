@@ -57,6 +57,7 @@ STEPS = {
     "commit": ("state", "commit only if the user says so; never push"),
 }
 PROTECTED_BRANCHES = {"main", "master"}
+WHY_LINE = "Verifies the agent's stated reason, not just its result."
 TEST_SKIP_DIRS = {".notbydefault", ".demo-run", "node_modules", ".venv", "venv", ".git",
                   "__pycache__"}
 
@@ -1119,7 +1120,8 @@ def pr_description(r: Resolver) -> str:
     budget = res["assumptions"].get("budget")
     lines = [f"# Resolve #{r.decision_id}: switch {r.old_target} -> {r.target}", "",
              f"Decision #{r.decision_id} (`{r.decision['label']}`), task: "
-             f"{res['callsite'].get('task') or '-'}", "", "## Why", "", v["summary"], "",
+             f"{res['callsite'].get('task') or '-'}", "", "## Why", "", v["summary"], "", WHY_LINE,
+             "",
              "## Changes", ""]
     for e in r.edits:
         lines.append(f"- `{e.path}`: {', '.join(e.sites)}" + "".join(f"; {n}" for n in e.notes))
@@ -1139,7 +1141,9 @@ def pr_description(r: Resolver) -> str:
     if old_p != new_p:
         lines.append(f"- provider {old_p} -> {new_p}: set `{pcfg[new_p]['key_env']}` in every "
                      f"deployment (`{pcfg[old_p]['key_env']}` is no longer read here)")
-    lines += ["", "## Evidence", "", "| | current | new | source |", "|---|---|---|---|",
+    from notbydefault.fit.report import FIT_LINE
+    lines += ["", "## Evidence", "", FIT_LINE, "", "| | current | new | source |",
+              "|---|---|---|---|",
               f"| model | `{r.old_target}` | `{r.target}` | fit check verdict: {v['kind']} |",
               f"| correct vs reference | {correct(cur)} | {correct(new)} | "
               f"`{r.decision['data'].get('results')}` |",
@@ -1176,9 +1180,9 @@ def pr_description(r: Resolver) -> str:
         lines += [f"none: {gs['note']}", ""]
     claims = r.decision["data"].get("claims")
     if claims:
-        from notbydefault.claims import block_lines
+        from notbydefault.claims import CLAIM_TITLE, block_lines
         head, *rest = block_lines(claims, markdown=True)
-        lines += ["## Claim check", "", head, "", *rest, ""]
+        lines += [f"## {CLAIM_TITLE}", "", head, "", *rest, ""]
     lines += ["## Traces", "",
               f"- resolve: `{r.tracer.trace_id or 'not exported (telemetry off)'}`",
               f"- fit check: `{res.get('trace_id') or '-'}`", "",

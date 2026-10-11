@@ -25,7 +25,7 @@ from pathlib import Path
 CLAIM_TYPES = ("cost", "quality", "latency", "compliance", "maturity", "popularity")
 KEYWORDS = {
     "popularity": r"popular|widely used|everyone|most used|industry standard|de facto|community|"
-                  r"stars|downloads|trending|go-to|well[- ]known|common choice",
+                  r"stars|downloads|trending|go-to|well[- ]known|(?:common|standard) choice",
     "compliance": r"\bEU\b|europe|GDPR|data residen|\bregion|compliant|compliance|HIPAA|SOC ?2|"
               r"sovereign|\bUS\b|\bUK\b|data stays?|hosted in",
     "latency": r"fast|latency|quick|speed|low[- ]latency|real[- ]?time|responsive|snappy|"
@@ -51,6 +51,8 @@ task; popularity = how widely others use it.) Skip sentences that make no claim.
 Return {{"claims": [{{"type": "<type>", "text": "<verbatim words>"}}]}}"""
 MAX_REASON = 2000
 CLAIM_MARK = {"true": "TRUE", "false": "FALSE", "untested": "UNTESTED"}
+CLAIM_SYMBOL = {"true": "✓", "false": "✗", "untested": "–"}    # check, cross, dash
+CLAIM_TITLE = "Claim check: the agent's reasons, tested"
 
 
 def _norm(s: str) -> str:
@@ -60,8 +62,7 @@ def _norm(s: str) -> str:
 def keyword_claims(reason: str) -> list[dict]:
     """Deterministic split: one claim per clause that matches a type's keywords."""
     out = []
-    for clause in re.split(r"(?<=[.!?;])\s+|\n+|,\s+(?=and |but |plus )|\s+and\s+(?=it |its |the )",
-                           reason):
+    for clause in re.split(r"(?<=[.!?;:])\s+|\n+|,\s+|\s+and\s+(?=it |its |the )", reason):
         clause = clause.strip(" .;,-")
         if len(clause) < 4:
             continue
@@ -296,23 +297,47 @@ def check_quality(claim: dict, ctx: dict) -> dict:
         return _verdict("quality", claim, "untested", "the fit check has no row for this model")
     src, trace = _fit_source(ctx)
     rel = bool(SUPERLATIVE.search(claim["text"]))
+    # any tested setup within budget (or with no budget recorded) that scored higher refutes it
+    in_budget = [s for s in stats if s is not cur and s.get("fits_budget") is not False]
     if cur.get("n_ref"):
         def count(s):
             return round(s["correct_rate"] * s["n_ref"])
         best = max(stats, key=count)
-        ok = (count(best) - count(cur) <= 1) if rel else cur["correct_rate"] >= 0.75
-        detail = (f"correct on {count(cur)}/{cur['n_ref']} reference cases"
-                  + (f", hard {cur['hard_correct']}/{cur['hard_total']}"
-                     if cur.get("hard_total") else "")
-                  + (f"; best tested: {best['name']} {count(best)}/{best['n_ref']}"
-                     if best is not cur else "; the best setup tested"))
+        better = max(in_budget, key=count, default=None)
+        better = better if better and count(better) > count(cur) else None
+        ok = not better and ((count(best) - count(cur) <= 1) if rel
+                             else cur["correct_rate"] >= 0.75)
+        hard = f", hard {cur['hard_correct']}/{cur['hard_total']}" if cur.get("hard_total") else ""
+        if better:
+            detail = (f"{count(cur)}/{cur['n_ref']} vs {count(better)}/{better['n_ref']} at "
+                      f"{_short(better['name'])}, within budget")
+        else:
+            detail = (f"correct on {count(cur)}/{cur['n_ref']} reference cases{hard}; "
+                      "no in-budget candidate scored higher"
+                      + (f"; best tested: {best['name']} {count(best)}/{best['n_ref']}"
+                         if count(best) > count(cur) else ""))
     else:
         from notbydefault.fit.stats import MEAN_TOLERANCE
         best = max(stats, key=lambda s: s.get("mean") or 0)
-        ok = (best["mean"] - cur["mean"] <= MEAN_TOLERANCE) if rel else cur["pass_rate"] >= 0.8
-        detail = (f"judge score {cur['mean']:.2f}/5, verifier pass {cur['pass_rate']:.0%}"
-                  + (f"; best tested: {best['name']} {best['mean']:.2f}" if best is not cur else ""))
+        better = max(in_budget, key=lambda s: s.get("mean") or 0, default=None)
+        better = better if better and (better.get("mean") or 0) - cur["mean"] > MEAN_TOLERANCE \
+            else None
+        ok = not better and ((best["mean"] - cur["mean"] <= MEAN_TOLERANCE) if rel
+                             else cur["pass_rate"] >= 0.8)
+        if better:
+            detail = (f"judge score {cur['mean']:.2f}/5 vs {better['mean']:.2f}/5 at "
+                      f"{_short(better['name'])}, within budget")
+        else:
+            detail = (f"judge score {cur['mean']:.2f}/5, verifier pass {cur['pass_rate']:.0%}; "
+                      "no in-budget candidate scored higher"
+                      + (f"; best tested: {best['name']} {best['mean']:.2f}"
+                         if best["mean"] - cur["mean"] > MEAN_TOLERANCE else ""))
     return _verdict("quality", claim, "true" if ok else "false", detail, src, trace)
+
+
+def _short(name: str) -> str:
+    """'gemini:gemini-3.1-flash-lite' -> 'gemini-3.1-flash-lite' (setup suffixes kept)."""
+    return name.split(":", 1)[1] if ":" in name.split(" ", 1)[0] else name
 
 
 def check_latency(claim: dict, ctx: dict) -> dict:
@@ -421,11 +446,12 @@ def counts(claims: dict | None) -> dict[str, int]:
 
 
 def block_lines(claims: dict | None, markdown: bool = False) -> list[str]:
-    """The "Claim check" block, as the check report, decision record and PR show it."""
+    """The claim check block, as the check report, decision record and PR show it. Markdown
+    callers put CLAIM_TITLE in their own heading; plain text starts with it."""
     if not claims:
         return []
     c = counts(claims)
-    head = (f"Claim check: the agent's reason ({claims.get('reason_source') or 'recorded'}) makes "
+    head = (f"The agent's reason ({claims.get('reason_source') or 'recorded'}) makes "
             f"{len(claims['items'])} claim(s): {c['true']} true, {c['false']} false, "
             f"{c['untested']} untested (split by {claims.get('classified_by')}).")
     reason = " ".join(claims["reason"].split())
@@ -434,14 +460,15 @@ def block_lines(claims: dict | None, markdown: bool = False) -> list[str]:
         src = "; ".join(x for x in (i.get("source"), f"trace {i['trace_id']}" if i.get("trace_id")
                                     else "") if x)
         if markdown:
-            lines.append(f"- **{CLAIM_MARK[i['verdict']]}** ({i['type']}) \"{i['text']}\": "
+            lines.append(f"- {CLAIM_SYMBOL[i['verdict']]} **{CLAIM_MARK[i['verdict']]}** "
+                         f"({i['type']}) \"{i['text']}\": "
                          f"{i['detail']}" + (f" [{src}]" if src else ""))
         else:
             lines.append(f"  {CLAIM_MARK[i['verdict']]:<9} {i['type']:<10} \"{i['text']}\"")
             lines.append(f"            {i['detail']}" + (f" [{src}]" if src else ""))
     if not claims["items"]:
         lines.append("  (no claim found in the reason)")
-    return lines
+    return lines if markdown else [CLAIM_TITLE, *lines]
 
 
 def store(project: Path, graph, decision_id: int, claims: dict) -> None:

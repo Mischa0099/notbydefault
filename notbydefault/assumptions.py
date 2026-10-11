@@ -122,9 +122,10 @@ def _fmt(value) -> str:
     return "unknown" if value is None else str(value)
 
 
-def _cause_of(graph, nid: int | None, fallback: str) -> str:
+def _cause_of(graph, nid: int | None, fallback: str) -> tuple[str, str]:
+    """(what broke it, its node type: requirement / constraint, or "" when not a node)."""
     n = graph.get_node(nid) if nid else None
-    return n["label"] if n else fallback
+    return (n["label"], n["type"]) if n else (fallback, "")
 
 
 def broken(project: Path, graph, decision: dict, catalog: dict,
@@ -138,9 +139,10 @@ def broken(project: Path, graph, decision: dict, catalog: dict,
     _region, _rsrc, region_node = region_in_force(graph)
     out = []
 
-    def broke(item, now_value, cause):
+    def broke(item, now_value, cause, cause_type=""):
         out.append({"key": item["key"], "label": item["label"], "was": item["value"],
-                    "now": now_value, "cause": cause, "source": item.get("source", "")})
+                    "now": now_value, "cause": cause, "cause_type": cause_type,
+                    "source": item.get("source", "")})
 
     for item in saved:
         key, was = item["key"], item["value"]
@@ -149,8 +151,8 @@ def broken(project: Path, graph, decision: dict, catalog: dict,
             if cur is not None and cur != was:
                 node = (region_node if key == "data_region"
                         else (limits.get(key) or (None, None))[1])
-                broke(item, cur, _cause_of(graph, node["id"] if isinstance(node, dict) else node,
-                                           f"the graph's {item['label']}"))
+                broke(item, cur, *_cause_of(graph, node["id"] if isinstance(node, dict) else node,
+                                            f"the graph's {item['label']}"))
         elif key.startswith("price:"):
             cur = current_price(catalog, key[6:])
             if cur and was and any(abs((cur[k] or 0) - (was.get(k) or 0)) > 1e-9
@@ -173,7 +175,8 @@ def broken(project: Path, graph, decision: dict, catalog: dict,
 
 
 def describe(b: dict) -> str:
-    return f"'{b['label']}: {_fmt(b['was'])}' broken by '{b['cause']}'"
+    kind = f"{b['cause_type']} " if b.get("cause_type") else ""
+    return f"'{b['label']}: {_fmt(b['was'])}' broken by {kind}'{b['cause']}'"
 
 
 def record_snapshot(project: Path, graph, decision_id: int, catalog: dict | None = None,

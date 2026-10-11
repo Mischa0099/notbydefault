@@ -65,12 +65,24 @@ def note_history(graph, decision_id: int, event: str) -> None:
     graph.update_data(decision_id, history=history[-30:])
 
 
+STALE_LINE = "invalidated: {}"
+REVIEW_LINE = "needs review: evidence warrants another look because {}"
+
+
+def status_line(data: dict) -> str | None:
+    """How a stale or needs-review decision is described everywhere (cards, receipt, record)."""
+    if data.get("status") == "stale":
+        return STALE_LINE.format(data.get("stale_reason") or "marked stale")
+    if data.get("status") == "needs_review":
+        return REVIEW_LINE.format(data.get("review_reason") or "a requirement changed")
+    return None
+
+
 def why_text(d: dict) -> str:
     data = d["data"]
-    if data.get("status") == "stale":
-        return data.get("stale_reason") or "marked stale"
-    if data.get("status") == "needs_review":
-        return data.get("review_reason") or "needs review"
+    line = status_line(data)
+    if line:
+        return line
     if data.get("reason"):
         given = f"{data['reason']} (reason given by a person, {str(data.get('reason_at'))[:10]})"
         return given + (f" Fit check: {data['verdict_summary']}" if data.get("verdict_summary")
@@ -142,7 +154,8 @@ def summary_block(project: Path, graph, d: dict) -> list[str]:
     if data.get("claims"):
         from notbydefault.claims import block_lines
         head, *rest = block_lines(data["claims"], markdown=True)
-        lines += ["### Claim check", "", head, "", *rest, ""]
+        from notbydefault.claims import CLAIM_TITLE
+        lines += [f"### {CLAIM_TITLE}", "", head, "", *rest, ""]
 
     snap = data.get("assumptions") or {}
     if snap.get("items"):

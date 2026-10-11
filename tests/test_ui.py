@@ -286,7 +286,7 @@ def test_claim_check_watched_assumptions_and_debt_are_shown(repo):
     cl = client_for(p)
     page = cl.get(f"/decisions/{did}").text
     assert "Claim check" in page and "claim v-false" in page and "not evidence for your project" in page
-    assert "Watched assumptions" in page and "broken by EU only" in page
+    assert "Watched assumptions" in page and "broken by requirement EU only" in page
     overview = cl.get("/").text
     assert "decision debt" in overview and "assumptions expired" in overview
     assert "Decision debt:" in overview and f"decision #{db}: mark reviewed with a reason" in overview

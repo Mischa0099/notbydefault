@@ -127,6 +127,8 @@ mark.assume { background: var(--warn-bg); color: var(--warn); font: 700 .72rem/1
 .tiles { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin-bottom: 26px; }
 @media (max-width: 1100px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.debt-line { margin: 0 0 6px auto; max-width: 34em; text-align: right; }
+.fit-line { margin: 0 0 8px; }
 .tile { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 14px 12px; position: relative; overflow: hidden; text-decoration: none; color: var(--ink); display: block; min-width: 0; }
 .tile::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--rule); }
 .tile.ok::after { background: var(--ok); } .tile.warn::after { background: var(--warn); } .tile.bad::after { background: var(--bad); } .tile.ink::after { background: var(--ink); }

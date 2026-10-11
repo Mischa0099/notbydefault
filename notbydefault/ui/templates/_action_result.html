@@ -9,7 +9,7 @@
     <ul class="plain changed">
       {% for d, was, now in changed %}
       <li><a href="/decisions/{{ d.id }}" class="mono">#{{ d.id }} {{ d.label }}</a> {{ pill(was) }} <span class="arrow">→</span> {{ pill(now) }}
-        <div class="small muted">{{ d.data.stale_reason if now == "stale" else d.data.review_reason }}</div></li>
+        <div class="small muted">{{ d.data|status_line }}</div></li>
       {% endfor %}
     </ul>
     {% elif ok %}<p class="small">No decision conflicts with it.</p>{% endif %}
