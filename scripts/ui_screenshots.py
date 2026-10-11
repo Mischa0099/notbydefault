@@ -4,7 +4,7 @@ Runs against a throwaway copy of demo-app (graph.db copied with SQLite's backup 
 check writing to the live graph is never disturbed) and uses the installed Chrome via
 Playwright (no `playwright install`). Read-only: no actions are clicked.
 
-    python scripts/ui_screenshots.py [--width 1280] [--out docs/screenshots]
+    python scripts/ui_screenshots.py [--width 1280] [--out docs/screenshots] [--pages overview,decision]
 """
 from __future__ import annotations
 
@@ -51,6 +51,8 @@ def main() -> int:
     ap.add_argument("--height", type=int, default=860)
     ap.add_argument("--out", default=str(REPO / "docs" / "screenshots"))
     ap.add_argument("--decision", type=int, default=21)
+    ap.add_argument("--pages", help="comma-separated subset of: "
+                    + ", ".join(name for name, _ in PAGES))
     args = ap.parse_args()
     import uvicorn
     from playwright.sync_api import sync_playwright
@@ -77,6 +79,8 @@ def main() -> int:
                 page.on("pageerror", lambda e: errors.append(str(e)))
                 page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
                 for name, path in PAGES:
+                    if args.pages and name not in args.pages.split(","):
+                        continue
                     page.goto(base + path.format(did=args.decision), wait_until="networkidle")
                     if name.startswith("graph"):
                         page.wait_for_timeout(1200)       # dagre layout

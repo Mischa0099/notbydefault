@@ -270,3 +270,23 @@ def test_resolve_dry_run_shows_plan_and_diff_and_changes_nothing(repo):
     assert "gemini-3.5-flash-lite" in r.text
     assert git("status", "--porcelain") == before and git("branch", "--show-current").strip() == "main"
     assert f"Resolve dry run for #{did}" in c.get("/").text
+
+
+def test_claim_check_watched_assumptions_and_debt_are_shown(repo):
+    from notbydefault import assumptions, claims
+    from notbydefault import watch as watch_mod
+    p, did, db = repo
+    with Graph.for_project(p) as g:
+        g.update_data(did, agent_reason="It is the cheapest. Data stays in the EU. Everyone uses it.")
+        c = claims.evaluate(p, g, g.get_node(did), make_client(), split=False)
+        claims.store(p, g, did, c)
+        assumptions.record_snapshot(p, g, did)
+        g.add_node("requirement", "EU only", {"constraints": {"data_residency": "EU"}})
+    watch_mod.watch(p, client=make_client(), out=lambda _: None)
+    cl = client_for(p)
+    page = cl.get(f"/decisions/{did}").text
+    assert "Claim check" in page and "claim v-false" in page and "not evidence for your project" in page
+    assert "Watched assumptions" in page and "broken by EU only" in page
+    overview = cl.get("/").text
+    assert "decision debt" in overview and "assumptions expired" in overview
+    assert "Decision debt:" in overview and f"decision #{db}: mark reviewed with a reason" in overview

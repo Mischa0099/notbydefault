@@ -1,3 +1,4 @@
+{% include "_claims.html" %}
 {% from "_macros.html" import pill, trace, file %}
 <div class="section-title"><h2>Call site &amp; affected code</h2><span class="src">Entire Graph · {{ v.affected_source or "touched files" }}{% if data.affected_at %} · {{ data.affected_at|when }}{% endif %}</span></div>
 <div class="grid-2">

@@ -534,8 +534,27 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                     "trace_id": tracer.trace_id,
                     "journal": getattr(tracer, "journal", []),
                 }, indent=2, default=str), encoding="utf-8")
+            claims = None
+            if not stopped:
+                with tracer.step("assumptions_and_claims", "verification",
+                                 reason="record what this verdict assumes, and check the agent's "
+                                        "stated reason against these results"):
+                    from notbydefault import assumptions as assumptions_mod
+                    from notbydefault import claims as claims_mod
+                    assumptions_mod.record_snapshot(
+                        project, g, decision_id, client.catalog,
+                        json.loads(results_path.read_text(encoding="utf-8")))
+                    claims = claims_mod.evaluate(project, g, g.get_node(decision_id), client,
+                                                 tracer=tracer)
+                    if claims:
+                        claims["trace_id"] = tracer.trace_id
+                        claims_mod.store(project, g, decision_id, claims)
         out("")
         out(render(stats, verdict, rctx))
+        if claims:
+            from notbydefault.claims import block_lines
+            out("")
+            out("\n".join(block_lines(claims)))
     tracer.flush()
     return 0
 

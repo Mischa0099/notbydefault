@@ -232,6 +232,29 @@ def cmd_reverify(args) -> int:
     return 0
 
 
+def cmd_claims(args) -> int:
+    from notbydefault.claims import run
+    return run(Path(args.project), args.decision_id)
+
+
+def cmd_watch(args) -> int:
+    from notbydefault.env import load_env
+    from notbydefault.watch import traces_volume, volume_note, watch
+    load_env()
+    ids = []
+    if args.volume_traces:
+        ids = [l.strip() for l in Path(args.volume_traces).read_text(encoding="utf-8").splitlines()
+               if l.strip() and not l.startswith("#")]
+    return watch(Path(args.project), auto_check=args.auto_check, max_cost=args.max_cost,
+                 volume_source=traces_volume(ids, args.volume_days) if ids else None,
+                 volume_note=volume_note(traces_file=args.volume_traces))
+
+
+def cmd_scan(args) -> int:
+    from notbydefault.scan import scan
+    return scan(Path(args.project), record=args.record)
+
+
 def cmd_ui(args) -> int:
     try:
         from notbydefault.ui.app import serve
@@ -451,6 +474,33 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--cases", choices=["all", "original", "heldout"], default="all",
                    help="which cases to run (held-out: eval/cases/heldout/)")
     p.set_defaults(func=cmd_eval)
+
+    p = sub.add_parser("claims", help="split the agent's stated reason into claims and check "
+                                      "each against the evidence")
+    p.add_argument("decision_id", type=int)
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.set_defaults(func=cmd_claims)
+
+    p = sub.add_parser("watch", help="re-evaluate each verdict's assumptions; re-open decisions "
+                                     "whose assumption changed")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--auto-check", action="store_true",
+                   help="queue a fit check for each re-opened model decision")
+    p.add_argument("--max-cost", type=float, default=1.00,
+                   help="USD cap across all queued checks (default 1.00)")
+    p.add_argument("--volume-traces", metavar="FILE",
+                   help="neatlogs production trace ids (one per line) to measure real call volume "
+                        "(needs NEATLOGS_TOKEN and NEATLOGS_PROJECT_ID)")
+    p.add_argument("--volume-days", type=float, default=30.0,
+                   help="days those traces cover (default 30)")
+    p.set_defaults(func=cmd_watch)
+
+    p = sub.add_parser("scan", help="audit the code and graph: decision debt (unchecked / claims "
+                                    "false / assumptions expired) and the next command for each")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--record", action="store_true",
+                   help="add choices found in the code but not in the graph as unreviewed decisions")
+    p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("ui", help="local web UI for the Decision Graph (127.0.0.1 only)")
     p.add_argument("--project", default=".", help="project dir (default: current dir)")

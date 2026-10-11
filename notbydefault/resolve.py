@@ -1010,7 +1010,13 @@ def pr_description(r: Resolver) -> str:
               f"{vf['correct']}/{vf['cases']} vs reference ({vf['banked']} failure-bank cases "
               f"first) | {vf['mode']} |",
               f"| project tests | | {r.tests['status']} | {r.tests['command'] or r.tests['summary']} |",
-              "", "## Traces", "",
+              ""]
+    claims = r.decision["data"].get("claims")
+    if claims:
+        from notbydefault.claims import block_lines
+        head, *rest = block_lines(claims, markdown=True)
+        lines += ["## Claim check", "", head, "", *rest, ""]
+    lines += ["## Traces", "",
               f"- resolve: `{r.tracer.trace_id or 'not exported (telemetry off)'}`",
               f"- fit check: `{res.get('trace_id') or '-'}`", "",
               "## Checkpoints", "", "| commit | checkpoint | link |", "|---|---|---|"]

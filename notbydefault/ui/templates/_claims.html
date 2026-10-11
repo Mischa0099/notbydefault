@@ -1,0 +1,39 @@
+{% from "_macros.html" import trace, file %}
+<div class="grid-2">
+<section>
+  <div class="section-title"><h2>Claim check</h2><span class="src">{% if v.claims %}{{ v.claims.reason_source }} · split by {{ v.claims.classified_by }} · {{ v.claims.checked_at|when }}{% else %}<code>notbydefault claims {{ d.id }}</code>{% endif %}</span></div>
+  {% if v.claims %}
+  <blockquote class="agent-reason">“{{ v.claims.reason[:500] }}{{ "…" if v.claims.reason|length > 500 }}”</blockquote>
+  {% if v.claims["items"] %}
+  <ul class="claims">
+    {% for c in v.claims["items"] %}
+    <li class="claim v-{{ c.verdict }}">
+      <span class="verdict">{{ c.verdict }}</span>
+      <div class="claim-body">
+        <div><span class="tag">{{ c.type }}</span> “{{ c.text }}”</div>
+        <div class="small">{{ c.detail }}</div>
+        {% if c.source or c.trace_id %}<div class="small muted">{% if c.source %}{% if c.source.startswith("fit check ") %}{{ file(c.source[10:], c.source) }}{% elif c.source.startswith("http") %}<a href="{{ c.source.split(' ')[0] }}" target="_blank" rel="noopener noreferrer">{{ c.source }}</a>{% else %}{{ c.source }}{% endif %}{% endif %}{% if c.trace_id %} · {{ trace(c.trace_id) }}{% endif %}</div>{% endif %}
+      </div>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty"><b>No claim in the reason</b>The agent gave a reason but it claims nothing checkable.</div>{% endif %}
+  {% else %}
+  <div class="empty"><b>No stated reason recorded</b>The hook records the agent's own words when it catches a decision; run <code>notbydefault claims {{ d.id }}</code> to check them.</div>
+  {% endif %}
+</section>
+<section>
+  <div class="section-title"><h2>Watched assumptions</h2><span class="src">{% if v.watched %}recorded {{ v.watched.recorded_at|when }} · <code>notbydefault watch</code>{% else %}<code>notbydefault watch</code> records them{% endif %}</span></div>
+  {% if v.watched and v.watched["items"] %}
+  <ul class="ruled small">
+    {% for b in v.watched.broken or [] %}
+    <li class="broken"><span class="pill bad">broken</span> <b>{{ b.label }}</b>: was {{ b.was|fmtval }}, now {{ b.now|fmtval }} <span class="muted">· broken by {{ b.cause }}</span></li>
+    {% endfor %}
+    {% set broken_keys = (v.watched.broken or [])|map(attribute="key")|list %}
+    {% for i in v.watched["items"] if i.key not in broken_keys %}
+    <li><span class="pill ok">holds</span> <b>{{ i.label }}</b>: {{ i.value|fmtval }} <span class="muted">· {{ i.source }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}<div class="empty"><b>No assumptions recorded yet</b>A fit check records them; <code>watch</code> records a baseline.</div>{% endif %}
+</section>
+</div>

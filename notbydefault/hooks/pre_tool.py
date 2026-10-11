@@ -76,6 +76,10 @@ def record(graph, detection, event: dict, project_dir: Path) -> int:
                     tool_use_id=event.get("tool_use_id"), times_seen=1)
         if event.get("tool_name") in ("Bash", "PowerShell"):
             data["command"] = (event.get("tool_input") or {}).get("command")
+        from notbydefault.claims import reason_from_event
+        reason, source = reason_from_event(event)    # the agent's own words, for `claims`
+        if reason:
+            data.update(agent_reason=reason, agent_reason_source=source)
         decision_id = graph.add_node("decision", detection.chosen, data, session_id)
         for node in graph.nodes("goal"):
             graph.add_edge(decision_id, node["id"], "serves")

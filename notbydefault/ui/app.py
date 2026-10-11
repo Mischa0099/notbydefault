@@ -67,7 +67,8 @@ def _diff(text: str) -> Markup:
 def make_env() -> Environment:
     env = Environment(loader=FileSystemLoader(str(HERE / "templates")),
                       autoescape=select_autoescape(default=True, default_for_string=True))
-    env.filters.update(diff=_diff, ago=_ago, when=_when, money=_money, md=mdlite.render,
+    from notbydefault.assumptions import _fmt
+    env.filters.update(fmtval=_fmt, diff=_diff, ago=_ago, when=_when, money=_money, md=mdlite.render,
                        status_text=lambda s: STATUS_TEXT.get(s, s or "-"),
                        kind_text=lambda k: KIND_TEXT.get(k, k),
                        pct=lambda v: "-" if v is None else f"{v:.0%}")

@@ -324,3 +324,18 @@ th.held, td.held { background: color-mix(in srgb, var(--accent) 7%, transparent)
 ul.changed li { padding: 6px 0; border-bottom: 1px dashed var(--rule-2); }
 ul.changed .arrow { font-family: var(--mono); color: var(--warn); font-weight: 700; }
 details summary { cursor: pointer; color: var(--muted); margin: 8px 0 4px; }
+
+/* --- claim check ------------------------------------------------------------------- */
+blockquote.agent-reason { margin: 0 0 12px; padding: 10px 14px; border-left: 3px solid var(--ink); background: var(--sheet); font-family: var(--serif); font-style: italic; color: var(--ink-2); border-radius: 0 8px 8px 0; overflow-wrap: anywhere; }
+ul.claims { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.claim { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 12px; background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 10px 12px; }
+.claim .verdict { font: 700 .72rem/1 var(--mono); text-transform: uppercase; letter-spacing: .08em; padding: 6px 0; text-align: center; border-radius: 4px; border: 1.5px solid currentColor; align-self: start; }
+.claim.v-true .verdict { color: var(--ok); background: var(--ok-bg); }
+.claim.v-false .verdict { color: var(--bad); background: var(--bad-bg); }
+.claim.v-untested .verdict { color: var(--neutral); background: var(--neutral-bg); border-style: dashed; }
+.claim-body { min-width: 0; overflow-wrap: anywhere; display: grid; gap: 3px; }
+li.broken { background: color-mix(in srgb, var(--bad-bg) 50%, transparent); padding-left: 8px !important; border-radius: 6px; }
+
+.debt { margin-top: 22px; }
+.debt td { vertical-align: top; }
+.debt code.copy { white-space: nowrap; }

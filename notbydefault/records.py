@@ -129,6 +129,20 @@ def summary_block(project: Path, graph, d: dict) -> list[str]:
                        f"{d['id']}` (model decisions).")
     lines += ["### Caveats", ""] + ([f"- {c}" for c in caveats] or ["- none recorded"]) + [""]
 
+    if data.get("claims"):
+        from notbydefault.claims import block_lines
+        head, *rest = block_lines(data["claims"], markdown=True)
+        lines += ["### Claim check", "", head, "", *rest, ""]
+
+    snap = data.get("assumptions") or {}
+    if snap.get("items"):
+        from notbydefault.assumptions import _fmt, describe as describe_broken
+        lines += [f"### Watched assumptions (recorded {snap.get('recorded_at')})", ""]
+        for b in snap.get("broken") or []:
+            lines.append(f"- BROKEN: {describe_broken(b)} (now: {_fmt(b['now'])})")
+        lines += [f"- {i['label']}: {_fmt(i['value'])} ({i['source']})"
+                  for i in snap["items"] if i["key"] not in ("models",)] + [""]
+
     entries = affected_entries(d)
     lines += [f"### Affected code ({data.get('affected_source') or 'touched files'})", ""]
     lines += [f"- `{describe(e)}`: {e.get('via', '')}" for e in entries] or ["- none recorded"]

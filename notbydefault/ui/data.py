@@ -76,6 +76,9 @@ class _GraphView:
     def nodes(self, type: str | None = None) -> list[dict]:
         return self.snap.nodes_list(type)
 
+    def get_node(self, nid: int) -> dict | None:
+        return self.snap.nodes.get(nid)
+
 
 def snapshot(project: Path) -> Snapshot:
     path = db_path(project)
@@ -354,6 +357,7 @@ def decision_view(project: Path, snap: Snapshot, did: int) -> dict | None:
         "failed_patch": rel_to(project, str(failed_patch)) if failed_patch.is_file() else None,
         "history": list(reversed(data.get("history") or [])),
         "resolve_diff": resolve_diff(project, data.get("resolution")),
+        "claims": data.get("claims"), "watched": data.get("assumptions"),
     }
 
 
@@ -538,7 +542,12 @@ def overview(project: Path, snap: Snapshot) -> dict:
     count = {s: sum(status_of(d) == s for d in decisions) for s in STATUSES}
     rows, checks = cost_rows(project, snap)
     savings = [r for r in rows if r["savings_monthly_usd"] not in ("", None)]
-    return {"decisions": len(decisions), "count": count, "checks": len(checks),
+    from notbydefault.scan import compute
+    try:
+        debt = compute(Path(project), _GraphView(snap))
+    except Exception:      # noqa: BLE001  (a malformed catalog must not break the page)
+        debt = None
+    return {"decisions": len(decisions), "count": count, "checks": len(checks), "debt": debt,
             "by_default": sum(by_default(d) for d in decisions), "savings": savings,
             "goal": next((g["label"] for g in snap.of_type("goal")), None)}
 
@@ -622,7 +631,8 @@ def costs_markdown(project: Path, snap: Snapshot, checks_per_month: float = 4.0,
     return render_md(Path(project).resolve().name, rows, checks, ue), render_csv(rows)
 
 
-HIDDEN_FIELDS = {"judged", "prices_usd_per_mtok", "affected_code", "history", "prompt"}
+HIDDEN_FIELDS = {"judged", "prices_usd_per_mtok", "affected_code", "history", "prompt",
+                 "claims", "assumptions", "agent_reason"}
 
 
 def node_fields(n: dict) -> list[tuple[str, str]]:

@@ -6,7 +6,7 @@
   <a class="tile warn{{ ' zero' if not ov.count.needs_review }}" href="/decisions?status=needs_review"><div class="n">{{ ov.count.needs_review }}</div><div class="l">needs review</div><div class="sub">may conflict with a requirement</div></a>
   <a class="tile bad{{ ' zero' if not ov.count.stale }}" href="/decisions?status=stale"><div class="n">{{ ov.count.stale }}</div><div class="l">stale</div><div class="sub">provably conflicts</div></a>
   <a class="tile ok{{ ' zero' if not ov.checks }}" href="/timeline"><div class="n">{{ ov.checks }}</div><div class="l">fit checks run</div><div class="sub">results files</div></a>
-  <a class="tile ok{{ ' zero' if not ov.savings }}" href="/costs"><div class="n">{{ ov.savings|length }}</div><div class="l">savings found</div><div class="sub">per decision, see right</div></a>
+  {% if ov.debt %}<a class="tile bad{{ ' zero' if not ov.debt.score }}" href="#debt" title="one point per unchecked decision, false claim and decision with an expired assumption"><div class="n">{{ ov.debt.score }}</div><div class="l">decision debt</div><div class="sub">{{ ov.debt.unchecked|length + ov.debt.unrecorded|length }} unchecked · {{ ov.debt.claims_false|length }} claims false · {{ ov.debt.expired|length }} assumptions expired</div></a>{% endif %}
 </section>
 <div class="grid-2">
   <section class="sheet" aria-labelledby="h-activity">
@@ -34,4 +34,20 @@
     {% endif %}
   </aside>
 </div>
+{% if ov.debt and ov.debt.rows %}
+<section class="sheet debt" id="debt" aria-labelledby="h-debt">
+  <div class="section-title" style="margin-top:0"><h2 id="h-debt">Decision debt: {{ ov.debt.score }}</h2><span class="src"><code>notbydefault scan</code> · code + graph audit</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>count</th><th>decision</th><th>why</th><th>next command</th></tr></thead>
+    <tbody>
+    {% for r in ov.debt.rows %}
+      <tr><td><span class="pill {{ 'bad' if r.count != 'unchecked' else '' }}">{{ r.count }}</span></td>
+        <td class="mono small">{% if r.id %}<a href="/decisions/{{ r.id }}">#{{ r.id }} {{ r.decision }}</a>{% else %}{{ r.decision }}{% endif %}</td>
+        <td class="small">{{ r.why }}</td>
+        <td><code class="copy" data-copy="{{ r.next }}" title="click to copy">{{ r.next }}</code></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
 </div>
