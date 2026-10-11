@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4MWC6VRDQMD6G56EVTCFXEX",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "eval/cases/detection.json",
+    "eval/cases/fit.json",
+    "eval/cases/heldout/detection.json",
+    "eval/cases/heldout/pivot.json",
+    "eval/cases/heldout/project.json",
+    "eval/cases/heldout/requirements.json",
+    "eval/cases/pivot.json",
+    "eval/cases/project_heldout.json",
+    "eval/cases/requirements.json",
+    "eval/results/v2-heldout.json",
+    "eval/results/v2.json",
+    "eval/results/v3.json",
+    "notbydefault/awake.py",
+    "notbydefault/cli.py",
+    "notbydefault/detect.py",
+    "notbydefault/evals.py",
+    "notbydefault/fit/run.py",
+    "notbydefault/fit/tracing.py",
+    "notbydefault/fit/verifiers.py",
+    "notbydefault/hooks/pre_tool.py",
+    "notbydefault/hooks/user_prompt.py",
+    "notbydefault/llm.py",
+    "notbydefault/pivot.py",
+    "notbydefault/telemetry.py",
+    "tests/test_awake.py",
+    "tests/test_detect.py",
+    "tests/test_evals.py",
+    "tests/test_fit_tracing.py",
+    "tests/test_fit_units.py",
+    "tests/test_pivot_stale.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 540,
+    "cache_creation_tokens": 826454,
+    "cache_read_tokens": 86019502,
+    "output_tokens": 267582,
+    "api_call_count": 264
+  }
+}
