@@ -289,6 +289,26 @@ def edit_file(text: str, path: str, sites: list[Site], old: tuple[str, str], new
     return after, notes
 
 
+def model_functions(text: str, model: str) -> list[tuple[str, int]]:
+    """[(symbol, line)] of the top-level functions and methods that use `model` (a literal, or
+    a module constant naming it): the call sites inside a file Entire Graph didn't break up."""
+    tree = ast.parse(text)
+    named = {k for k, v in _module_constants(tree).items() if v.value.value == model}
+
+    def uses(fn):
+        return any((isinstance(n, ast.Constant) and n.value == model)
+                   or (isinstance(n, ast.Name) and n.id in named) for n in ast.walk(fn))
+    funcs = (ast.FunctionDef, ast.AsyncFunctionDef)
+    out = []
+    for n in tree.body:
+        if isinstance(n, funcs) and uses(n):
+            out.append((n.name, n.lineno))
+        elif isinstance(n, ast.ClassDef):
+            out += [(f"{n.name}.{m.name}", m.lineno) for m in n.body
+                    if isinstance(m, funcs) and uses(m)]
+    return out
+
+
 def call_contract(path: Path, symbol: str | None) -> dict:
     """What the call site sends, read back from source: model ids, base URLs, key names."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -639,6 +659,9 @@ class Resolver:
                       f"failure bank, {len(g['cases']) - g['from_bank']} reference) x "
                       f"{len(g['sites'])} call site(s) -> {g['path']}; run before and after the "
                       "edit")
+            for path, names in g["whole_file"].items():
+                self._say(f"  Entire off: {path} is one site; testing the {len(names)} "
+                          f"function(s) in it that call the model: {', '.join(names)}")
         self.tracer.event("recommendation", "planning", f"switch {cfg['chosen']} -> {model}",
                           files=[e.path for e in edits], branch=self.branch)
         if not self.opts.apply:
@@ -655,31 +678,39 @@ class Resolver:
             tree = ast.parse(read_raw(self.project / cs["file"]))
         except (OSError, SyntaxError):
             tree = None
-        # the top-level function around the fit-checked call: a whole-file site (no symbol,
-        # e.g. from the files the agent touched) is tested through it
+        # the top-level function around the fit-checked call, the fallback for a whole-file
+        # site in that file that no function names the model in (e.g. an imported constant)
         enclosing = next((n.name for n in (tree.body if tree else [])
                           if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                           and n.lineno <= cs["line"] <= n.end_lineno), None)
-        primary, sites = None, []
+        primary, sites, whole = None, [], {}
         for s in self.inv["sites"]:
-            if s.symbol is None and s.path == cs["file"] and enclosing:
-                s = Site(s.path, enclosing, cs["line"], s.via)
-            if not s.symbol or "." in s.symbol:
-                continue
-            fn = _function(tree, s.symbol) if tree and s.path == cs["file"] else None
-            if fn is not None and fn.lineno <= cs["line"] <= fn.end_lineno:
-                primary = s.describe()
-            sites.append(s)
+            found = [s]
+            if s.symbol is None:     # a whole file (Entire off): every function using the model
+                try:
+                    found = [Site(s.path, name, line, s.via) for name, line in
+                             model_functions(read_raw(self.project / s.path), old[1])]
+                except (OSError, SyntaxError):
+                    found = []
+                if not found and s.path == cs["file"] and enclosing:
+                    found = [Site(s.path, enclosing, cs["line"], s.via)]
+                if found:
+                    whole[s.path] = [f.symbol for f in found]
+            for f in found:
+                fn = _function(tree, f.symbol) if tree and f.path == cs["file"] else None
+                if fn is not None and fn.lineno <= cs["line"] <= fn.end_lineno:
+                    primary = f.describe()
+                sites.append(f)
         cases = testgen.cases(self.project, self.decision_id, self.results["samples"])
         old_cfg, new_cfg = self.providers.get(old[0]) or {}, self.providers.get(new[0]) or {}
         self.gen = {"path": self._rel(testgen.test_path(self.project, self.decision_id)),
-                    "cases": cases, "sites": sites, "primary": primary,
+                    "cases": cases, "sites": sites, "primary": primary, "whole_file": whole,
                     "from_bank": sum(c["source"] == "failure bank" for c in cases),
                     "expect": {"model": new[1], "base_url": new_cfg.get("base_url")
                                if old[0] != new[0] else None},
                     "keys": [k for k in (old_cfg.get("key_env"), new_cfg.get("key_env")) if k],
                     "skipped": ("no failure-bank or reference cases" if not cases else
-                                "no call site is a module-level function" if not sites else None),
+                                "no call site has a function to call" if not sites else None),
                     "before": None, "after": None}
 
     def step_branch(self, error) -> None:
@@ -717,7 +748,7 @@ class Resolver:
         self._write(path, testgen.render(self.project, self.decision_id, self.target, g["sites"],
                                          g["primary"], g["cases"], g["expect"], g["keys"]))
         before = testgen.run(self.project, path, self.opts.test_timeout_s)
-        if before["total"] == 0 or before["errors"]:
+        if before["total"] + before["skipped"] == 0 or before["errors"]:
             raise RuntimeError(f"the generated tests did not run: {before['summary']}")
         g["before"] = before
         self.tracer.event("generated_tests", "verification",
@@ -758,7 +789,7 @@ class Resolver:
                                   "nbd.generated_after": testgen.counts_text(after)})
             self._say(f"Generated tests: {testgen.counts_text(g['before'])} before, "
                       f"{testgen.counts_text(after)} after the edit")
-            if after["failed"] or after["errors"] or not after["passed"]:
+            if after["failed"] or after["errors"] or not (after["passed"] or after["skipped"]):
                 raise RuntimeError(f"the generated tests fail on the new code: {after['summary']}")
         cmd = test_command(self.project)
         if cmd is None:
@@ -919,9 +950,10 @@ class Resolver:
         if g["before"] is None:
             return {"path": None, "note": g["skipped"]}
         return {"path": g["path"], "cases": len(g["cases"]), "from_failure_bank": g["from_bank"],
-                "sites": [s.describe() for s in g["sites"]],
+                "sites": [s.describe() for s in g["sites"]], "whole_file": g["whole_file"],
                 "before": testgen.counts_text(g["before"]),
-                "after": testgen.counts_text(g["after"])}
+                "after": testgen.counts_text(g["after"]),
+                "skipped": (g["after"] or g["before"])["skip_reasons"]}
 
     def step_commit(self, error) -> None:
         files = [e.path for e in self.edits] + [self._rel(self.record_path)]
@@ -1027,7 +1059,9 @@ def test_command(project: Path) -> list[str] | None:
     from notbydefault.scout import test_files
     project = Path(project)
     if test_files(project):
-        return [sys.executable, "-m", "pytest", "-q"]
+        # serial, fail-fast, no cache dir: low memory and nothing written into the project
+        return [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider",
+                "--no-header"]
     pkg = project / "package.json"
     if pkg.is_file():
         try:
@@ -1131,6 +1165,13 @@ def pr_description(r: Resolver) -> str:
                   f"`{r.target}` and, fed its reference answer, return it.", "",
                   "| | before the edit | after the edit |", "|---|---|---|",
                   f"| generated tests | {gs['before']} | {gs['after']} |", ""]
+        for path, names in (gs.get("whole_file") or {}).items():
+            lines += [f"Entire off: tested {len(names)} function{'s' * (len(names) != 1)} calling "
+                      f"the model in `{path}` (" + ", ".join(f"`{n}`" for n in names) + ").", ""]
+        if gs["skipped"]:
+            lines += ["Skipped (the case's inputs could not reach the model: a method with no "
+                      "no-arg constructor that still failed with `__init__` mocked, or a function "
+                      "they don't fit):", ""] + [f"- {x}" for x in gs["skipped"]] + [""]
     else:
         lines += [f"none: {gs['note']}", ""]
     claims = r.decision["data"].get("claims")

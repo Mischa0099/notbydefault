@@ -116,10 +116,15 @@ trace id. After the verdict the check records the decision's **assumptions** and
   loads the call site's module with a fake `openai` module, calls the site's function (parameters
   named like a sample field get it, dates converted from the annotation; the rest the user message)
   and asserts one request to the new model (and provider base URL); fed its reference answer, the
-  fit-checked site must return it. Methods and whole-file sites are skipped (a whole-file site in
-  the fit-checked file is tested through the function around the checked call). resolve runs the
-  file before the edit (the old model: routing fails) and after it; the step fails unless every
-  case passes after. Counts go in `resolution.generated_tests`, the PR and the UI receipt.
+  fit-checked site must return it. A method is called on an instance from its no-arg constructor,
+  else with `__init__` mocked to a no-op and attributes set from the case's inputs; if neither
+  reaches the model the case is skipped and the PR names it with the reason. A whole-file site
+  (Entire off) becomes every function and method in the file that uses the model id
+  (`model_functions`; the PR says "Entire off: tested N functions calling the model"). resolve runs
+  the file before the edit (the old model: routing fails) and after it; the step fails if any case
+  fails after. Counts go in `resolution.generated_tests`, the PR and the UI receipt. Both runs, like
+  resolve's project-suite run, are serial with `-p no:cacheprovider --no-header` (the suite also
+  `-x`; the generated file not, so its counts are complete).
 
 ## Records and Entire
 

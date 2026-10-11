@@ -364,6 +364,63 @@ def test_failing_project_tests_roll_everything_back(tmp_path):
     assert [s["status"].split(":")[0] for s in r.state["steps"]][-1] == "failed"
 
 
+# one client for the file, three functions calling the model through it
+MULTI = APP + '''
+
+def title(texts):
+    response = _client_for().chat.completions.create(
+        model="openai/gpt-oss-120b", messages=[{"role": "user", "content": str(texts)}])
+    return response.choices[0].message.content
+
+
+class Digest:
+    def __init__(self, store):     # no no-arg constructor: tested with __init__ mocked
+        self.store = store
+
+    def run(self, texts):
+        response = _client_for().chat.completions.create(
+            model="openai/gpt-oss-120b", messages=[{"role": "user", "content": str(texts)}])
+        return response.choices[0].message.content
+
+
+def _client_for():
+    return OpenAI(base_url=GROQ_BASE_URL, api_key=os.environ["FAKE_GROQ_KEY"])
+'''
+
+
+def test_entire_off_tests_every_function_calling_the_model_in_the_file(tmp_path):
+    p, did, client = make_repo(tmp_path, app=MULTI)
+    code, out, r = resolve(p, did, client, apply=True, yes=True)
+    assert code == 0, out
+    assert ("Entire off: app.py is one site; testing the 3 function(s) in it that call the "
+            "model: summarize_notes, title, Digest.run") in out
+    gs = r._generated_summary()
+    assert [s.split(" ")[1] for s in gs["sites"]] == ["summarize_notes", "title", "Digest.run"]
+    assert r.gen["primary"].endswith(" summarize_notes")              # the fit-checked one
+    assert (gs["before"], gs["after"]) == ("0/24 passed", "24/24 passed")
+    assert gs["skipped"] == []
+    pr = r.pr_path.read_text(encoding="utf-8")
+    assert ("Entire off: tested 3 functions calling the model in `app.py` (`summarize_notes`, "
+            "`title`, `Digest.run`).") in pr
+    assert "| generated tests | 0/24 passed | 24/24 passed |" in pr
+
+
+def test_a_method_no_instance_reaches_is_skipped_and_named_in_the_pr(tmp_path):
+    # Digest.run needs a real store: no constructor without one, a mocked __init__ leaves a str
+    hopeless = MULTI.replace("    def run(self, texts):\n",
+                             "    def run(self, texts):\n        self.store.connect()\n")
+    assert hopeless.count("self.store.connect()") == 1
+    p, did, client = make_repo(tmp_path, app=hopeless)
+    code, out, r = resolve(p, did, client, apply=True, yes=True)
+    assert code == 0, out
+    gs = r._generated_summary()
+    assert (gs["before"], gs["after"]) == ("0/16 passed, 8 skipped", "16/16 passed, 8 skipped")
+    [reason] = gs["skipped"]
+    assert reason.startswith("Digest.run not reached: constructor: TypeError")
+    pr = r.pr_path.read_text(encoding="utf-8")
+    assert "Skipped (the case's inputs could not reach the model" in pr and reason in pr
+
+
 def test_generated_tests_failing_on_the_new_code_roll_everything_back(repo, monkeypatch):
     from notbydefault import testgen
     p, did, client = repo

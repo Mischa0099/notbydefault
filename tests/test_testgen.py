@@ -45,11 +45,66 @@ def test_template_is_deterministic(tmp_path):
     assert "'primary': True" in a and ROWS[0]["id"] in a
 
 
-def test_methods_and_module_level_sites_are_not_called(tmp_path):
-    text = testgen.render(tmp_path, 1, "g:m", [SITE, Site("app.py", "Handler.do_POST", 9, "calls"),
-                                               Site("other.py", None, None, "touched")],
-                          None, [], NEW, [])
-    assert "Handler.do_POST" not in text and "other.py" not in text
+CLASSES = """import os
+from openai import OpenAI
+
+MODEL = "openai/gpt-oss-120b"
+
+
+def _ask(text):
+    client = OpenAI(base_url="https://groq.test/v1", api_key=os.environ["FAKE_GROQ_KEY"])
+    reply = client.chat.completions.create(model=MODEL,
+                                           messages=[{"role": "user", "content": text}])
+    return reply.choices[0].message.content
+
+
+class Plain:                       # no-arg constructor
+    def __init__(self, tone="short"):
+        self.tone = tone
+
+    def run(self, notes):
+        return _ask(f"{self.tone}: {notes}")
+
+
+class NeedsArgs:                   # __init__ mocked, self.notes set from the case
+    def __init__(self, notes, db):
+        raise RuntimeError("would connect")
+
+    def run(self):
+        return _ask(self.notes)
+
+
+class Hopeless:                    # neither: self.conn must be a real connection
+    def __init__(self, conn):
+        self.conn = conn
+
+    def run(self):
+        return _ask(self.conn.cursor().fetch())
+"""
+
+
+def test_methods_get_an_instance_or_are_skipped_with_the_reason(tmp_path):
+    (tmp_path / "svc.py").write_text(CLASSES, encoding="utf-8")
+    sites = [Site("svc.py", f"{c}.run", 1, "uses literal") for c in ("Plain", "NeedsArgs",
+                                                                    "Hopeless")]
+    sites.append(Site("svc.py", None, None, "touched"))              # no symbol: not callable
+    case = {"id": "c1", "source": "reference", "user_message": "ship it",
+            "fields": {"notes": "ship it"}, "reply": "done", "expect": "done"}
+    path = testgen.test_path(tmp_path, 1)
+    path.parent.mkdir()
+    text = testgen.render(tmp_path, 1, "g:m", sites, None, [case], NEW, ["FAKE_GROQ_KEY"])
+    assert "'svc.py:None'" not in text
+    path.write_text(text, encoding="utf-8")
+    before = testgen.run(tmp_path, path)
+    assert (before["passed"], before["failed"], before["skipped"]) == (0, 2, 1), before
+    (tmp_path / "svc.py").write_text(CLASSES.replace("openai/gpt-oss-120b",
+                                                     "gemini-3.5-flash-lite"), encoding="utf-8")
+    after = testgen.run(tmp_path, path)
+    assert (after["passed"], after["failed"], after["skipped"]) == (2, 0, 1), after
+    assert testgen.counts_text(after) == "2/2 passed, 1 skipped"
+    [reason] = after["skip_reasons"]
+    assert reason.startswith("Hopeless.run not reached: constructor: TypeError")
+    assert "mocked __init__: AttributeError" in reason
 
 
 def test_generated_tests_fail_before_and_pass_after_the_switch(tmp_path):
@@ -70,7 +125,8 @@ def test_generated_tests_fail_before_and_pass_after_the_switch(tmp_path):
                    encoding="utf-8")
     after = testgen.run(tmp_path, path)
     assert (after["passed"], after["total"]) == (4, 4), after
-    assert testgen.counts_text(before) == "0/4 passed" and testgen.counts_text(after) == "4/4 passed"
+    assert testgen.counts_text(before) == "0/4 passed"
+    assert testgen.counts_text(after) == "4/4 passed"
     assert not (tmp_path / "tests" / "__pycache__").exists()
 
 
