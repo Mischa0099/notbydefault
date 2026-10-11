@@ -106,6 +106,10 @@ def test_dry_run_shows_the_diff_and_changes_nothing(repo):
     assert "Fit check: reusing" in out and f"switch groq:openai/gpt-oss-120b -> {TARGET}" in out
     assert '+        model="gemini-3.5-flash-lite",' in out and "+GEMINI_BASE_URL" in out
     assert "Dry run: nothing changed" in out
+    assert (f"Generated tests: 8 case(s) (8 from the failure bank, 0 reference) x 1 call site(s)"
+            f" -> tests/test_nbd_{did}_generated.py") in out
+    assert "change  app.py" in out and "tests: none found" in out
+    assert not (p / "tests" / f"test_nbd_{did}_generated.py").exists()
     assert snapshot(p) == before and git(p, "status", "--porcelain") == ""
     assert git(p, "branch", "--show-current") == "main" and "nbd/" not in git(p, "branch")
     assert (p / ".notbydefault" / "graph.db").read_bytes() == graph_before
@@ -140,8 +144,15 @@ def test_apply_edits_tests_verifies_records_and_leaves_it_uncommitted(repo):
     for part in ("## Evidence", "| latency per call (s) |", "| verifiers on the new code |",
                  "## Traces", "## Checkpoints", "FAKE_GEMINI_KEY", "| verify | verification | 1 | ok |"):
         assert part in pr, part
-    changed = {l[3:] for l in git(p, "status", "--porcelain").splitlines()}
-    assert changed == {"app.py", r._rel(r.record_path)}
+    generated = f"tests/test_nbd_{did}_generated.py"
+    assert res["generated_tests"]["path"] == generated, out
+    assert res["generated_tests"]["before"] == "0/8 passed"     # the old code calls the old model
+    assert res["generated_tests"]["after"] == "8/8 passed"
+    assert "Generated tests: 0/8 passed before, 8/8 passed after the edit" in out
+    assert "| generated tests | 0/8 passed | 8/8 passed |" in pr
+    assert "## Existing tests" in pr and "| change | `app.py` | none found |" in pr  # reads, no import
+    changed = {l[3:] for l in git(p, "status", "--porcelain", "--untracked-files=all").splitlines()}
+    assert changed == {"app.py", r._rel(r.record_path), generated}
 
 
 def test_commits_only_when_the_user_says_yes_and_never_on_main(repo):
@@ -351,6 +362,29 @@ def test_failing_project_tests_roll_everything_back(tmp_path):
     with Graph.for_project(p) as g:
         assert g.get_node(did)["data"] == node_before
     assert [s["status"].split(":")[0] for s in r.state["steps"]][-1] == "failed"
+
+
+def test_generated_tests_failing_on_the_new_code_roll_everything_back(repo, monkeypatch):
+    from notbydefault import testgen
+    p, did, client = repo
+    before = snapshot(p)
+    real, runs = testgen.run, []
+
+    def run(project, path, timeout=600):
+        got = real(project, path, timeout)
+        runs.append(got)
+        if len(runs) > 1:      # after the edit: as if the new code broke the parsing
+            got = dict(got, passed=0, failed=got["total"], summary="8 failed in 0.1s")
+        return got
+    monkeypatch.setattr(testgen, "run", run)
+    code, out, r = resolve(p, did, client, apply=True, yes=True)
+    assert code == 3, out
+    assert "Stopped at step 'test' after one retry" in out
+    assert "the generated tests fail on the new code: 8 failed" in out
+    assert len(runs) == 3                          # before, after, after again on the retry
+    assert snapshot(p) == before
+    assert git(p, "status", "--porcelain", "--untracked-files=all") == ""   # generated file gone
+    assert git(p, "branch", "--show-current") == "main"
 
 
 def test_failing_verify_after_the_record_restores_the_record_too(repo, monkeypatch):

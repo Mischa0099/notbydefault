@@ -304,3 +304,19 @@ def test_claim_checks_and_watch_reopens_appear_in_the_feed(repo):
     watch_mod.watch(p, client=make_client(), out=lambda _: None)
     html = client_for(p).get("/timeline").text
     assert f"Claim check #{db} MongoDB:" in html and f"Re-opened #{did}" in html
+
+
+def test_resolution_receipt_shows_generated_test_counts(repo):
+    p, did, _ = repo
+    with Graph.for_project(p) as g:
+        g.update_data(did, resolution={
+            "at": "2026-10-11T12:00:00+00:00", "branch": "nbd/1-switch-to-x", "from": "groq:a",
+            "to": "gemini:b", "tests": "passed", "verifiers": "8/8 production, 8/8 vs reference",
+            "trace_id": None, "generated_tests": {
+                "path": "tests/test_nbd_1_generated.py", "cases": 8, "from_failure_bank": 3,
+                "sites": ["app.py:9 summarize_notes"], "before": "0/8 passed",
+                "after": "8/8 passed"}})
+    html = client_for(p).get(f"/decisions/{did}").text
+    assert "tests/test_nbd_1_generated.py" in html
+    assert "8 case(s), 3 from the failure bank" in html
+    assert "before the edit 0/8 passed → after 8/8 passed" in html

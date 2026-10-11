@@ -42,6 +42,9 @@
     <dt>Switched</dt><dd><code>{{ v.resolution.from }}</code> → <code>{{ v.resolution.to }}</code></dd>
     <dt>Branch</dt><dd><code>{{ v.resolution.branch }}</code> · {{ v.resolution.at|when }}</dd>
     <dt>Tests</dt><dd>{{ v.resolution.tests }} · verifiers {{ v.resolution.verifiers }}</dd>
+    {% set gt = v.resolution.generated_tests %}
+    {% if gt and gt.path %}<dt>Generated</dt><dd>{{ file(gt.path) }} · {{ gt.cases }} case(s), {{ gt.from_failure_bank }} from the failure bank · before the edit {{ gt.before }} → after {{ gt.after }}</dd>
+    {% elif gt %}<dt>Generated</dt><dd class="muted">none: {{ gt.note }}</dd>{% endif %}
     <dt>Trace</dt><dd>{{ trace(v.resolution.trace_id) }}</dd>
   </dl>
   {% if v.pr %}<hr><div class="prose">{{ v.pr|md }}</div>{% endif %}

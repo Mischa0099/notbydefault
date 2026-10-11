@@ -104,11 +104,22 @@ trace id. After the verdict the check records the decision's **assumptions** and
   a table of the decisions behind each count and the next command for each. `--record` adds the
   unrecorded choices to the graph.
 - **`resolve <id>`** (`resolve.py`): from a switch verdict to a reviewable branch: investigate
-  (Entire Graph, records, failure bank), reuse the fit check if the call site and verifiers are
-  unchanged, edit every call site the decision owns, run the project's tests and the verifiers on
-  the new code (from the response cache), update the record and write a PR description (evidence,
+  (Entire Graph, records, failure bank, and the project tests that already exercise each call site
+  and caller: `scout.existing_tests`, read from the test files' AST), reuse the fit check if the
+  call site and verifiers are unchanged, generate tests, edit every call site the decision owns,
+  run the generated tests, the project's tests and the verifiers on the new code (from the response
+  cache), update the record and write a PR description (evidence, existing and generated tests,
   claim check, traces, checkpoints). Dry run unless `--apply`; never touches main; commits only on
-  yes; rolls back on failure.
+  yes; rolls back on failure (the generated test file too).
+- **Generated tests** (`testgen.py`): `tests/test_nbd_<id>_generated.py`, one case per failure-bank
+  input and per reference answer, inserted into a fixed template (no model writes code). Each case
+  loads the call site's module with a fake `openai` module, calls the site's function (parameters
+  named like a sample field get it, dates converted from the annotation; the rest the user message)
+  and asserts one request to the new model (and provider base URL); fed its reference answer, the
+  fit-checked site must return it. Methods and whole-file sites are skipped (a whole-file site in
+  the fit-checked file is tested through the function around the checked call). resolve runs the
+  file before the edit (the old model: routing fails) and after it; the step fails unless every
+  case passes after. Counts go in `resolution.generated_tests`, the PR and the UI receipt.
 
 ## Records and Entire
 
@@ -118,7 +129,8 @@ resolution, history). The file is committed with the code, so it lands in the En
 that commit (`checkpoints.py` finds it: `https://entire.io/gh/<owner>/<repo>/commit/<sha>`).
 `entire.py` wraps the CLI; every call degrades gracefully. `affected.py` uses Entire Graph for
 every function using a decision's model or service; `why.py` answers only from recorded facts,
-cited; `scout.py` mines checkpoint transcripts for untested edge cases.
+cited; `scout.py` mines checkpoint transcripts for untested edge cases and lists the existing
+project tests for each call site and caller.
 
 ## Observability, evals, costs
 

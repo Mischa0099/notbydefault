@@ -1,12 +1,17 @@
 """`notbydefault resolve <id>`: take one decision from its verdict to a reviewable branch.
 
-    plan -> investigate -> fit_check -> recommend -> (approval) -> branch -> apply -> test
-    -> verify -> record -> commit (only if the user says yes) -> stop
+    plan -> investigate -> fit_check -> recommend -> (approval) -> branch -> generate_tests
+    -> apply -> test -> verify -> record -> commit (only if the user says yes) -> stop
 
   - investigate: the decision's requirements, its affected code (Entire Graph), past decision
     records (its own and every decision sharing its model or files) and its failure bank
   - fit_check: reuses the latest fit check while the call site and verifiers are unchanged
     since it ran; otherwise runs `check` (which asks before spending; only with --apply)
+  - investigate also lists the project tests that already exercise each call site and caller
+    (scout.existing_tests, read from source)
+  - generate_tests: writes tests/test_nbd_<id>_generated.py from the failure bank and reference
+    cases (testgen: a fixed template, the model call mocked) and runs it on the old code; the
+    test step runs it again on the new code, and both counts go in the record and PR
   - apply: edits every call site the decision owns. A site using the same model for another
     decision (its own record, possibly its own verdict) is listed and left alone; callers of
     a site are listed, not edited.
@@ -43,6 +48,8 @@ STEPS = {
     "fit_check": ("verification", "reuse the fit check if it still matches the code, else run it"),
     "recommend": ("planning", "turn the verdict into concrete edits and ask for approval"),
     "branch": ("state", "work on nbd/<id>-<slug>, never on main"),
+    "generate_tests": ("verification", "tests from the failure bank and reference cases, run on "
+                                       "the code before the edit"),
     "apply": ("execution", "edit every call site the decision owns"),
     "test": ("verification", "run the project's own tests on the new code"),
     "verify": ("verification", "run the decision's verifiers on the requests the new code makes"),
@@ -499,10 +506,16 @@ class Resolver:
                 excluded.append((site, owner))
             else:
                 direct.append(site)
+        from notbydefault.scout import existing_tests
+        covering = existing_tests(self.project, direct + callers)
         self.inv = {"ctx": ctx, "entries": entries, "source": source, "note": note,
                     "past": past, "own_record": self._rel(own_record) if own_record else None,
                     "briefing": briefing, "bank": bank, "bank_by_model": by_model,
-                    "sites": direct, "excluded": excluded, "callers": callers}
+                    "sites": direct, "excluded": excluded, "callers": callers,
+                    "covering": covering}
+        self.tracer.event("existing_tests", "context",
+                          f"{sum(bool(v) for v in covering.values())} of {len(covering)} call "
+                          "site(s) and caller(s) have project tests", covering=covering)
         self.tracer.event("affected_code", "context" if source == "entire-graph" else "recovery",
                           f"{len(direct)} call site(s) to change, {len(excluded)} owned by other "
                           f"decisions, {len(callers)} caller(s) ({source})",
@@ -512,11 +525,13 @@ class Resolver:
         self._say(f"  affected code ({source}{': ' + note if note else ''}):")
         for s in direct:
             self._say(f"    change  {s.describe():<40} {s.via}")
+            self._say_tests(s)
         for s, o in excluded:
             self._say(f"    leave   {s.describe():<40} owned by decision #{o['id']}"
                       + (f" ({o['record']})" if o["record"] else ""))
         for s in callers:
-            self._say(f"    caller  {s.describe():<40} {s.via} (not edited; tests cover it)")
+            self._say(f"    caller  {s.describe():<40} {s.via} (not edited)")
+            self._say_tests(s)
         self._say(f"  records: {self.inv['own_record'] or 'none yet'}"
                   + "".join(f"; #{p['id']} {p['label']} [{p['verdict'] or p['status']}]"
                             + (f" {p['record']}" if p['record'] else "") for p in past))
@@ -528,6 +543,11 @@ class Resolver:
         if not direct:
             raise Stop(2, f"No call site of decision #{self.decision_id} uses {d['label']!r} any "
                           "more; nothing to change.")
+
+    def _say_tests(self, site: Site) -> None:
+        found = self.inv["covering"].get(site.describe()) or []
+        more = f" (+{len(found) - 4} more)" if len(found) > 4 else ""
+        self._say(f"            tests: {', '.join(found[:4]) + more if found else 'none found'}")
 
     def step_fit_check(self, error) -> None:
         data, why = reusable_check(self.project, self.decision)
@@ -593,6 +613,7 @@ class Resolver:
             edits.append(FileEdit(path, before, after, [s.describe() for s in sites], notes))
         self.edits = edits
         self.providers = providers
+        self._plan_tests(old, new)
         self._say(f"\nRecommend: switch {cfg['chosen']} -> {model}")
         self._say(f"  correct {correct_text(rec)}, hard {hard_text(rec)}, "
                   f"verifier pass {rec['pass_rate']:.0%}, "
@@ -610,6 +631,14 @@ class Resolver:
             self._say(e.diff().rstrip("\n"))
             for n in e.notes:
                 self._say(f"  ({n})")
+        g = self.gen
+        if g["skipped"]:
+            self._say(f"\nGenerated tests: none ({g['skipped']})")
+        else:
+            self._say(f"\nGenerated tests: {len(g['cases'])} case(s) ({g['from_bank']} from the "
+                      f"failure bank, {len(g['cases']) - g['from_bank']} reference) x "
+                      f"{len(g['sites'])} call site(s) -> {g['path']}; run before and after the "
+                      "edit")
         self.tracer.event("recommendation", "planning", f"switch {cfg['chosen']} -> {model}",
                           files=[e.path for e in edits], branch=self.branch)
         if not self.opts.apply:
@@ -618,6 +647,40 @@ class Resolver:
         if not self.opts.yes and not self._ask_yes(
                 f"\nApply on a new branch {self.branch}? [y/N] "):
             raise Stop(1, "Not approved; nothing changed.")
+
+    def _plan_tests(self, old, new) -> None:
+        from notbydefault import testgen
+        cs = self.results["callsite"]
+        try:
+            tree = ast.parse(read_raw(self.project / cs["file"]))
+        except (OSError, SyntaxError):
+            tree = None
+        # the top-level function around the fit-checked call: a whole-file site (no symbol,
+        # e.g. from the files the agent touched) is tested through it
+        enclosing = next((n.name for n in (tree.body if tree else [])
+                          if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+                          and n.lineno <= cs["line"] <= n.end_lineno), None)
+        primary, sites = None, []
+        for s in self.inv["sites"]:
+            if s.symbol is None and s.path == cs["file"] and enclosing:
+                s = Site(s.path, enclosing, cs["line"], s.via)
+            if not s.symbol or "." in s.symbol:
+                continue
+            fn = _function(tree, s.symbol) if tree and s.path == cs["file"] else None
+            if fn is not None and fn.lineno <= cs["line"] <= fn.end_lineno:
+                primary = s.describe()
+            sites.append(s)
+        cases = testgen.cases(self.project, self.decision_id, self.results["samples"])
+        old_cfg, new_cfg = self.providers.get(old[0]) or {}, self.providers.get(new[0]) or {}
+        self.gen = {"path": self._rel(testgen.test_path(self.project, self.decision_id)),
+                    "cases": cases, "sites": sites, "primary": primary,
+                    "from_bank": sum(c["source"] == "failure bank" for c in cases),
+                    "expect": {"model": new[1], "base_url": new_cfg.get("base_url")
+                               if old[0] != new[0] else None},
+                    "keys": [k for k in (old_cfg.get("key_env"), new_cfg.get("key_env")) if k],
+                    "skipped": ("no failure-bank or reference cases" if not cases else
+                                "no call site is a module-level function" if not sites else None),
+                    "before": None, "after": None}
 
     def step_branch(self, error) -> None:
         root = Path(git(self.project, "rev-parse", "--show-toplevel"))
@@ -643,6 +706,25 @@ class Resolver:
                                              f"{self.start_branch})", branch=self.branch)
         self._say(f"\nBranch: {self.branch} (from {self.start_branch}; {self._rel(root) or root})")
 
+    def step_generate_tests(self, error) -> None:
+        from notbydefault import testgen
+        g = self.gen
+        if g["skipped"]:
+            self.tracer.event("no_generated_tests", "verification", g["skipped"])
+            self._say(f"Generated tests: none ({g['skipped']})")
+            return
+        path = self.project / g["path"]
+        self._write(path, testgen.render(self.project, self.decision_id, self.target, g["sites"],
+                                         g["primary"], g["cases"], g["expect"], g["keys"]))
+        before = testgen.run(self.project, path, self.opts.test_timeout_s)
+        if before["total"] == 0 or before["errors"]:
+            raise RuntimeError(f"the generated tests did not run: {before['summary']}")
+        g["before"] = before
+        self.tracer.event("generated_tests", "verification",
+                          f"{g['path']}: {testgen.counts_text(before)} on the code before the edit",
+                          before=before["summary"])
+        self._say(f"Generated tests: {g['path']}: {testgen.counts_text(before)} before the edit")
+
     def step_apply(self, error) -> None:
         import py_compile
         if error:   # start the retry from the original files
@@ -667,6 +749,17 @@ class Resolver:
                   f"use {self.target}")
 
     def step_test(self, error) -> None:
+        from notbydefault import testgen
+        g = self.gen
+        if g["before"] is not None:
+            after = testgen.run(self.project, self.project / g["path"], self.opts.test_timeout_s)
+            g["after"] = after
+            self.tracer.annotate({"nbd.generated_before": testgen.counts_text(g["before"]),
+                                  "nbd.generated_after": testgen.counts_text(after)})
+            self._say(f"Generated tests: {testgen.counts_text(g['before'])} before, "
+                      f"{testgen.counts_text(after)} after the edit")
+            if after["failed"] or after["errors"] or not after["passed"]:
+                raise RuntimeError(f"the generated tests fail on the new code: {after['summary']}")
         cmd = test_command(self.project)
         if cmd is None:
             self.tests = {"status": "none found", "command": None, "summary":
@@ -789,6 +882,7 @@ class Resolver:
                           "left_alone": [f"{s.describe()} (decision #{o['id']})"
                                          for s, o in self.inv["excluded"]],
                           "tests": self.tests["status"],
+                          "generated_tests": self._generated_summary(),
                           "verifiers": f"{self.verification['production_pass']}/"
                                        f"{self.verification['cases']} production, "
                                        f"{self.verification['correct']}/"
@@ -819,8 +913,20 @@ class Resolver:
         self._say(f"Record: {self._rel(self.record_path)} updated; PR description: "
                   f"{self._rel(self.pr_path)}")
 
+    def _generated_summary(self) -> dict:
+        from notbydefault import testgen
+        g = self.gen
+        if g["before"] is None:
+            return {"path": None, "note": g["skipped"]}
+        return {"path": g["path"], "cases": len(g["cases"]), "from_failure_bank": g["from_bank"],
+                "sites": [s.describe() for s in g["sites"]],
+                "before": testgen.counts_text(g["before"]),
+                "after": testgen.counts_text(g["after"])}
+
     def step_commit(self, error) -> None:
         files = [e.path for e in self.edits] + [self._rel(self.record_path)]
+        if self.gen["before"] is not None:
+            files.append(self.gen["path"])
         status = git(self.project, "status", "--porcelain", "--", *files)
         self._say(f"\nChanged on {self.branch} (not committed, not pushed):\n{status}")
         if not self._ask_yes(f"Commit these {len(files)} file(s) on {self.branch}? [y/N] "):
@@ -918,13 +1024,10 @@ def reusable_check(project: Path, decision: dict) -> tuple[dict | None, str]:
 
 def test_command(project: Path) -> list[str] | None:
     """The project's own test command: pytest when it has Python tests, else `npm test`."""
+    from notbydefault.scout import test_files
     project = Path(project)
-    for p in project.rglob("*.py"):
-        rel = p.relative_to(project).parts
-        if TEST_SKIP_DIRS & set(rel[:-1]):
-            continue
-        if rel[0] == "tests" or re.match(r"(test_.*|.*_test)\.py$", p.name):
-            return [sys.executable, "-m", "pytest", "-q"]
+    if test_files(project):
+        return [sys.executable, "-m", "pytest", "-q"]
     pkg = project / "package.json"
     if pkg.is_file():
         try:
@@ -992,6 +1095,13 @@ def pr_description(r: Resolver) -> str:
                         else ""))
     for s in r.inv["callers"]:
         lines.append(f"- not changed: caller `{s.describe()}` ({s.via})")
+    lines += ["", "## Existing tests", "", "| | call site / caller | project tests |",
+              "|---|---|---|"]
+    for kind, sites in (("change", r.inv["sites"]), ("caller", r.inv["callers"])):
+        for s in sites:
+            found = r.inv["covering"].get(s.describe()) or []
+            lines.append(f"| {kind} | `{s.describe()}` | "
+                         + (", ".join(f"`{t}`" for t in found) or "none found") + " |")
     if old_p != new_p:
         lines.append(f"- provider {old_p} -> {new_p}: set `{pcfg[new_p]['key_env']}` in every "
                      f"deployment (`{pcfg[old_p]['key_env']}` is no longer read here)")
@@ -1011,6 +1121,18 @@ def pr_description(r: Resolver) -> str:
               f"first) | {vf['mode']} |",
               f"| project tests | | {r.tests['status']} | {r.tests['command'] or r.tests['summary']} |",
               ""]
+    gs = r._generated_summary()
+    lines += ["## Generated tests", ""]
+    if gs["path"]:
+        lines += [f"`{gs['path']}`: {gs['cases']} case(s) ({gs['from_failure_bank']} from the "
+                  "failure bank, the rest reference cases) at "
+                  + ", ".join(f"`{s}`" for s in gs["sites"])
+                  + f". Deterministic template, model call mocked: each case must reach "
+                  f"`{r.target}` and, fed its reference answer, return it.", "",
+                  "| | before the edit | after the edit |", "|---|---|---|",
+                  f"| generated tests | {gs['before']} | {gs['after']} |", ""]
+    else:
+        lines += [f"none: {gs['note']}", ""]
     claims = r.decision["data"].get("claims")
     if claims:
         from notbydefault.claims import block_lines

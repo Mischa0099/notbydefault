@@ -8,9 +8,13 @@
      quote isn't in the transcripts, or that the existing test inputs already cover, is dropped
   5. the rest are saved as "suggested" verifier cases in .notbydefault/suggested/<id>.jsonl;
      nothing runs them until someone promotes them into the samples file
+
+existing_tests() is the deterministic half resolve uses: which project tests already exercise
+each call site and caller, read from the test files' source.
 """
 from __future__ import annotations
 
+import ast
 import json
 import re
 from datetime import datetime, timezone
@@ -237,6 +241,76 @@ def save(project: Path, decision_id: int, kept: list[dict]) -> tuple[Path, list[
         for k in new:
             f.write(json.dumps(k, ensure_ascii=False) + "\n")
     return path, new
+
+
+def test_files(project: Path) -> list[Path]:
+    """The project's own Python test files: under tests/, or named test_*.py / *_test.py."""
+    from notbydefault.resolve import TEST_SKIP_DIRS
+    project = Path(project)
+    out = []
+    for p in sorted(project.rglob("*.py")):
+        rel = p.relative_to(project).parts
+        if TEST_SKIP_DIRS & set(rel[:-1]):
+            continue
+        if rel[0] == "tests" or re.match(r"(test_.*|.*_test)\.py$", p.name):
+            out.append(p)
+    return out
+
+
+def _test_functions(tree):
+    """(test id, node) for module-level test functions and test methods of Test* classes."""
+    for n in tree.body:
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name.startswith("test"):
+            yield n.name, n
+        elif isinstance(n, ast.ClassDef) and n.name.startswith("Test"):
+            for m in n.body:
+                if isinstance(m, (ast.FunctionDef, ast.AsyncFunctionDef)) \
+                        and m.name.startswith("test"):
+                    yield f"{n.name}::{m.name}", m
+
+
+def _imports(tree) -> set[str]:
+    mods = set()
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            mods |= {a.name for a in n.names}
+        elif isinstance(n, ast.ImportFrom) and n.module:     # `from pkg import jobs` too
+            mods |= {n.module} | {f"{n.module}.{a.name}" for a in n.names}
+    return mods
+
+
+def existing_tests(project: Path, sites) -> dict[str, list[str]]:
+    """For each site (path, symbol): the project tests that exercise it.
+
+    A test function that names the site's function (or its class) covers it directly
+    ("tests/test_app.py::test_x"); a test file that only imports the site's module is listed
+    as "tests/test_app.py (imports app)". Read from source, nothing is run."""
+    project = Path(project)
+    parsed = []
+    for f in test_files(project):
+        try:
+            tree = ast.parse(f.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        funcs = [(tid, {x.id for x in ast.walk(fn) if isinstance(x, ast.Name)}
+                  | {x.attr for x in ast.walk(fn) if isinstance(x, ast.Attribute)})
+                 for tid, fn in _test_functions(tree)]
+        parsed.append((f.relative_to(project).as_posix(), _imports(tree), funcs))
+    out = {}
+    for s in sites:
+        module = s.path.removesuffix(".py").replace("/", ".")
+        names = set((s.symbol or "").split(".")) - {""}
+        found = []
+        for rel, imports, funcs in parsed:
+            if rel == s.path:
+                continue
+            direct = [f"{rel}::{tid}" for tid, used in funcs if names & used]
+            if direct:
+                found += direct
+            elif module in imports or module.rsplit(".", 1)[-1] in imports:
+                found.append(f"{rel} (imports {module})")
+        out[s.describe()] = found
+    return out
 
 
 def read_transcripts(project: Path, entire, touching, needles, tracer):

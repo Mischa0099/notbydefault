@@ -91,3 +91,29 @@ def test_entire_unavailable_degrades(project):
     code, text, t, tr, _ = run(p, did, r=FakeEntireRunner({}))
     assert code == 0 and "No checkpoints available" in text and tr.calls == []
     assert any(e["name"] == "checkpoints_unavailable" for e in t.journal)
+
+
+def test_existing_tests_per_call_site_and_caller(tmp_path):
+    from notbydefault.resolve import Site
+    from notbydefault.scout import existing_tests
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "tests" / "test_app.py").write_text(
+        "import app\n\ndef test_summary():\n    assert app.summarize_notes(['a'])\n\n"
+        "class TestHandler:\n    def test_post(self):\n        Handler.do_POST\n\n"
+        "def helper():\n    summarize_notes\n")
+    (tmp_path / "tests" / "test_other.py").write_text("from pkg import jobs\n\ndef test_x():\n"
+                                                      "    pass\n")
+    (tmp_path / "pkg" / "jobs_test.py").write_text("def test_run():\n    run_jobs()\n")
+    (tmp_path / "tests" / "broken.py").write_text("def (:\n")       # unparsable: skipped
+    sites = [Site("app.py", "summarize_notes", 3, "uses literal"),
+             Site("app.py", "Handler.do_POST", 9, "calls summarize_notes"),
+             Site("pkg/jobs.py", "run_jobs", 1, "calls"),
+             Site("billing.py", "charge", 1, "calls")]
+    got = existing_tests(tmp_path, sites)
+    assert got == {
+        "app.py:3 summarize_notes": ["tests/test_app.py::test_summary"],    # helper() isn't a test
+        "app.py:9 Handler.do_POST": ["tests/test_app.py::TestHandler::test_post"],
+        "pkg/jobs.py:1 run_jobs": ["pkg/jobs_test.py::test_run",
+                                   "tests/test_other.py (imports pkg.jobs)"],
+        "billing.py:1 charge": []}
