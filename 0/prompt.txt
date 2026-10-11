@@ -64,3 +64,7 @@ Full suite serially. Stage, msg.txt, don't commit.
 ---
 
 Add scripts/live_demo_run.py: on the real demo-app, run `check 21` live once (no --offline), with --max-cost 0.10 and the real Groq+Gemini keys. Print the trace id and the full report to a file demo-live-run.txt. Also save the resulting trace id into docs/demo.md as "live-run trace: <id> ($<cost>)". This is run manually, not in CI. One command, clear output, nothing else changes.
+
+---
+
+.venv\Scripts\python.exe scripts\live_demo_run.py
