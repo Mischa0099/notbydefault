@@ -126,33 +126,82 @@ def check_command(decision_id: int, project_dir: Path) -> str:
             f"--project {_quote(str(project_dir.resolve()))}")
 
 
-def handle(event: dict, project_dir: Path) -> dict | None:
-    from notbydefault.detect import detect
+def _spawn_refresh(project_dir: Path, ids: list[int]) -> None:
+    """Refresh affected code + the briefing cache (Entire Graph, checkpoints, search) detached."""
+    import subprocess
+    cmd = [sys.executable, "-m", "notbydefault.briefing", str(project_dir), *map(str, ids)]
+    kwargs = dict(cwd=str(REPO_ROOT), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                  stderr=subprocess.DEVNULL, close_fds=True)
+    if sys.platform == "win32":
+        flags = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP
+        try:
+            subprocess.Popen(cmd, creationflags=flags | subprocess.CREATE_BREAKAWAY_FROM_JOB,
+                             **kwargs)
+            return
+        except OSError:
+            pass
+        subprocess.Popen(cmd, creationflags=flags, **kwargs)
+    else:
+        subprocess.Popen(cmd, start_new_session=True, **kwargs)
 
-    detections = detect(event)
+
+def handle(event: dict, project_dir: Path, tracer=None) -> dict | None:
+    from notbydefault.detect import detect
+    from notbydefault.fit.tracing import Tracer
+
+    tracer = tracer or Tracer()
+    with tracer.step("detect", "tool_use", reason="is this tool call a stack decision?"):
+        detections = detect(event)
     if not detections:
         return None
 
+    import os
+    from notbydefault.briefing import HOOK_LINES, build
     from notbydefault.graph import Graph
 
     with Graph.for_project(project_dir) as graph:
-        ids = [record(graph, d, event, project_dir) for d in detections]
+        with tracer.step("record", "state", reason="store the decision in the Decision Graph"):
+            ids = [record(graph, d, event, project_dir) for d in detections]
+        with tracer.step("briefing", "context",
+                         reason="related past decisions, rejected alternatives, history and "
+                                "reusable code, from the graph and the precomputed Entire cache"):
+            lines: list[str] = []
+            for i in ids:
+                lines += [l for l in build(project_dir, graph, graph.get_node(i)) if l not in lines]
+            lines = lines[:HOOK_LINES]
+            tracer.event("briefing_built", "context", f"{len(lines)} briefing line(s)",
+                         lines=len(lines))
 
     parts = [f"this picks {d.chosen} as your {d.kind}"
              + (f" ({d.category})" if d.kind == "service" else "")
              + f". Run `{check_command(i, project_dir)}` to test the fit."
              for d, i in zip(detections, ids)]
     reason = "NotByDefault: " + " Also: ".join(parts)
+    if lines:
+        reason += ("\nBriefing (full version in `check`):\n"
+                   + "\n".join(f"- {l}" for l in lines))
 
-    import os
+    if os.environ.get("NOTBYDEFAULT_ENTIRE") != "0":
+        with tracer.step("refresh_cache", "planning",
+                         reason="the Entire lookups are slow: run them detached so the next "
+                                "briefing and `check` have them"):
+            try:
+                _spawn_refresh(project_dir, ids)
+            except Exception as e:
+                tracer.event("refresh_spawn_failed", "recovery", f"{e!r}; briefing uses the old cache")
+                _log(project_dir, f"briefing refresh spawn failed: {e!r}")
+
     if os.environ.get("NOTBYDEFAULT_TELEMETRY") != "0":
         try:
             _spawn_telemetry({
+                "kind": "trace", "name": "notbydefault.pre_tool",
                 "session_id": event.get("session_id"),
-                "tool_name": event.get("tool_name"),
-                "decisions": [{"decision_id": i, "kind": d.kind, "chosen": d.chosen,
-                               "category": d.category, "file": d.file}
-                              for d, i in zip(detections, ids)],
+                "info": {"tool_name": event.get("tool_name"),
+                         "decisions": [{"decision_id": i, "kind": d.kind, "chosen": d.chosen,
+                                        "category": d.category, "file": d.file}
+                                       for d, i in zip(detections, ids)],
+                         "briefing_lines": len(lines)},
+                "journal": tracer.journal,
             }, project_dir)
         except Exception as e:  # telemetry must never cost the user their prompt
             _log(project_dir, f"telemetry spawn failed: {e!r}")

@@ -16,7 +16,8 @@ def _m(family, size, strength, inp, out, **extra):
     return {"family": family, "size": size, "strength": strength, "in": inp, "out": out, **extra}
 
 
-CATALOG = {"roles": {"pivot": "groq:openai/gpt-oss-20b", "stale_judge": "groq:openai/gpt-oss-120b"},
+CATALOG = {"roles": {"pivot": "groq:openai/gpt-oss-20b", "stale_judge": "groq:openai/gpt-oss-120b",
+                     "why": "groq:openai/gpt-oss-120b", "scout": "groq:openai/gpt-oss-120b"},
            "providers": {
     "groq": {"base_url": "https://groq.test/v1", "key_env": "FAKE_GROQ_KEY", "tier": "free",
              "prices_source": "https://groq.test/models", "prices_fetched": "2026-10-10",
@@ -84,6 +85,16 @@ class FakeTransport:
                 "conflicts": [{"node_id": n["id"], "why": "gpt-4o costs more than the budget allows"}
                               for n in view["requirements_and_constraints"]
                               if "budget" in n["label"].lower()] if pivot else []})
+        if system.startswith("You answer a developer's question"):
+            bad = "invent" in user.split("Facts", 1)[0].lower()
+            return "why", json.dumps({"answer": "It was chosen in 2019 by the CTO [F99]." if bad
+                                      else "The fit test kept it [F1].", "cited": ["F1"]})
+        if system.startswith("You extract edge cases"):
+            return "scout", json.dumps({"cases": [
+                {"input": "notes with an empty line", "why": "agent said blank notes crash it",
+                 "evidence": "what about empty notes?", "already_tested": False},
+                {"input": "a single note", "why": "covered", "evidence": "Blank lines might crash",
+                 "already_tested": True}]})
         if system.startswith("You turn a product requirement"):
             text = user.split("Requirement:", 1)[1].splitlines()[0].lower()
             return "extract", json.dumps({"data_residency": "EU" if " eu " in f" {text} " else None,
@@ -155,6 +166,7 @@ def make_client(cache_dir=None, transport=None, catalog=CATALOG):
 def no_telemetry(monkeypatch):
     """Tests never send spans to neatlogs."""
     monkeypatch.setenv("NOTBYDEFAULT_TELEMETRY", "0")
+    monkeypatch.setenv("NOTBYDEFAULT_ENTIRE", "0")   # the real Entire CLI is never called
 
 
 @pytest.fixture
@@ -187,3 +199,55 @@ def never_touch_demo_state(monkeypatch):
         real_cache(self, folder)
     monkeypatch.setattr(graph_mod.Graph, "__init__", graph_init)
     monkeypatch.setattr(providers_mod.ResponseCache, "__init__", cache_init)
+
+
+# --- a fake Entire CLI ----------------------------------------------------------------
+
+FIXTURES = __import__("pathlib").Path(__file__).resolve().parent / "fixtures"
+
+
+class FakeEntireRunner:
+    """Stands in for subprocess.run(["entire", ...]): canned stdout per command prefix.
+
+    `responses` maps a tuple of leading args (after the exe) to stdout text, a callable
+    (args -> stdout), an exception to raise, or an int exit code (failure). Unknown commands
+    exit 1. The longest matching prefix wins.
+    """
+
+    def __init__(self, responses: dict | None = None):
+        self.responses = dict(responses or {})
+        self.calls: list[list[str]] = []
+
+    def __call__(self, cmd, cwd=None, capture_output=True, timeout=None, **_):
+        import subprocess
+        args = list(cmd[1:])
+        self.calls.append(args)
+        best = None
+        for prefix, value in self.responses.items():
+            if tuple(args[:len(prefix)]) == prefix and (best is None or len(prefix) > len(best[0])):
+                best = (prefix, value)
+        value = best[1] if best else 1
+        if callable(value) and not isinstance(value, type):
+            value = value(args)
+        if isinstance(value, BaseException):
+            raise value
+        if isinstance(value, int):
+            return subprocess.CompletedProcess(cmd, value, b"",
+                                               f"fake failure for {args[:2]}".encode())
+        return subprocess.CompletedProcess(cmd, 0, value.encode("utf-8"), b"")
+
+
+def demo_graph_responses() -> dict:
+    """entire-graph output recorded on a throwaway copy of demo-app (2026-10-11)."""
+    d = FIXTURES / "demo_graph"
+    return {("plugin", "list"): (d / "plugin_list.txt").read_text(encoding="utf-8"),
+            ("graph", "symbols"): (d / "symbols.ndjson").read_text(encoding="utf-8"),
+            ("graph", "edges"): (d / "edges.ndjson").read_text(encoding="utf-8")}
+
+
+def demo_project(path):
+    """The demo app's source files in `path` (the graph fixtures index them)."""
+    import shutil
+    for name in ("app.py", "actions.py", "requirements.txt"):
+        shutil.copy2(FIXTURES / "demo_graph" / name, path / name)
+    return path

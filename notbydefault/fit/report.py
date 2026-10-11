@@ -254,13 +254,15 @@ def render(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
 
 
 def write_decision_record(project: Path, stats: dict, verdict: Verdict,
-                          ctx: ReportContext, date: str) -> Path:
+                          ctx: ReportContext, date: str, existing: Path | None = None) -> Path:
+    """Write the detailed record; `existing` (the decision's record so far) is rewritten in
+    place, keeping its number, so one decision has one record across re-tests."""
     folder = project / "decisions"
     folder.mkdir(parents=True, exist_ok=True)
     numbers = [int(m.group(1)) for p in folder.glob("*.md")
                if (m := re.match(r"(\d{4})-", p.name))]
     slug = re.sub(r"[^a-z0-9]+", "-", f"ai-model-{ctx.literal}".lower()).strip("-")
-    path = folder / f"{max(numbers, default=0) + 1:04d}-{slug}.md"
+    path = existing or folder / f"{max(numbers, default=0) + 1:04d}-{slug}.md"
     rec = stats[verdict.recommended]
     status = {"keep": "Accepted (keep current model)",
               "switch": f"Change recommended: {rec.name}",

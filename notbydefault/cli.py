@@ -115,6 +115,66 @@ def cmd_label(args) -> int:
     return label(Path(args.project).resolve(), args.decision_id, n=args.n)
 
 
+def cmd_affected(args) -> int:
+    """Find every file/function using a decision's model or service (Entire Graph)."""
+    from notbydefault.affected import describe, refresh
+    from notbydefault.fit.tracing import make_tracer
+    project = Path(args.project).resolve()
+    if not db_path(project).exists():
+        print(f"No graph at {db_path(project)}.")
+        return 1
+    tracer = make_tracer()
+    with tracer.root("notbydefault.affected", {"notbydefault.decision_id": args.decision_id}):
+        with tracer.step("affected_code", "context",
+                         reason="ask Entire Graph which code uses the chosen model/service"):
+            results = refresh(project, [args.decision_id] if args.decision_id else None,
+                              tracer=tracer)
+    if not results:
+        print(f"No decision #{args.decision_id}")
+        return 1
+    with Graph.for_project(project) as g:
+        for did, res in results.items():
+            d = g.get_node(did)
+            print(f"#{did} {d['label']} [{d['data'].get('kind')}/{d['data'].get('category')}]: "
+                  f"{len(res.entries)} code locations in {len(res.files)} files ({res.source})")
+            if res.note:
+                print(f"  note: {res.note}")
+            for e in res.entries:
+                print(f"  {describe(e):<45} {e['via']}")
+    tracer.flush()
+    return 0
+
+
+def cmd_records(args) -> int:
+    """Write/update decisions/NNNN-<slug>.md for every decision (and save them to Brain)."""
+    from notbydefault.records import write_records
+    project = Path(args.project).resolve()
+    if not db_path(project).exists():
+        print(f"No graph at {db_path(project)}.")
+        return 1
+    with Graph.for_project(project) as g:
+        ids = [args.decision_id] if args.decision_id else [d["id"] for d in g.nodes("decision")]
+        paths = write_records(project, g, ids, "record regenerated", out=print)
+    for did, path in zip(ids, paths):
+        print(f"#{did}: {path.relative_to(project).as_posix()}")
+    return 0
+
+
+def cmd_why(args) -> int:
+    from notbydefault.why import why
+    return why(Path(args.project), args.question, use_llm=args.llm)
+
+
+def cmd_scout(args) -> int:
+    from notbydefault.scout import scout
+    return scout(Path(args.project), args.decision_id)
+
+
+def cmd_checkpoints(args) -> int:
+    from notbydefault.checkpoints import show
+    return show(Path(args.project), args.decision_id)
+
+
 def cmd_require(args) -> int:
     from notbydefault.stale import require
     return require(Path(args.project_dir), args.requirement)
@@ -248,6 +308,34 @@ def main(argv: list[str] | None = None) -> int:
                    help="times to add 4 inputs when the verdict is too close to call (default 1)")
     p.set_defaults(func=cmd_check)
 
+    p = sub.add_parser("affected", help="find every file/function a decision affects (Entire Graph)")
+    p.add_argument("decision_id", type=int, nargs="?", help="default: every decision")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.set_defaults(func=cmd_affected)
+
+    p = sub.add_parser("records", help="write/update decision records (decisions/*.md)")
+    p.add_argument("decision_id", type=int, nargs="?", help="default: every decision")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.set_defaults(func=cmd_records)
+
+    p = sub.add_parser("why", help="why was something decided? (answers only from records)")
+    p.add_argument("question")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--llm", action="store_true",
+                   help="let a Groq model phrase the answer from the cited facts")
+    p.set_defaults(func=cmd_why)
+
+    p = sub.add_parser("scout", help="suggest edge cases the agent discussed but didn't test")
+    p.add_argument("decision_id", type=int)
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.set_defaults(func=cmd_scout)
+
+    p = sub.add_parser("checkpoints",
+                       help="the Entire checkpoint of the commit that added a decision record")
+    p.add_argument("decision_id", type=int)
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.set_defaults(func=cmd_checkpoints)
+
     p = sub.add_parser("require", help="add a requirement and mark decisions it makes stale")
     p.add_argument("project_dir")
     p.add_argument("requirement", help='e.g. "EU data residency required"')
@@ -266,4 +354,9 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_label)
 
     args = parser.parse_args(argv)
+    for stream in (sys.stdout, sys.stderr):   # model text can hold characters cp1252 lacks
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     return args.func(args)

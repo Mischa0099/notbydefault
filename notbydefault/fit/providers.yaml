@@ -9,6 +9,8 @@
 roles:
   pivot: groq:openai/gpt-oss-20b         # fast yes/no + mapping onto the graph
   stale_judge: groq:openai/gpt-oss-120b  # judges every decision against a new requirement
+  why: groq:openai/gpt-oss-120b          # phrases `why` answers from recorded facts only
+  scout: groq:openai/gpt-oss-120b        # extracts untested edge cases from agent transcripts
 
 providers:
   groq:

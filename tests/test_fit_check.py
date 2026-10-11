@@ -122,7 +122,10 @@ def test_second_run_spends_no_requests_and_runs_failures_first(project):
     samples = json.loads(sorted((p / ".notbydefault" / "results").glob(f"{did}-*.json"))[-1]
                          .read_text())["samples"]
     assert samples[0].get("from_failure_bank") is True
-    assert (p / "decisions" / "0002-ai-model-openai-gpt-oss-120b.md").exists()
+    # one record per decision, rewritten in place on every verdict
+    assert [r.name for r in (p / "decisions").glob("*.md")] == ["0001-ai-model-openai-gpt-oss-120b.md"]
+    record = (p / "decisions" / "0001-ai-model-openai-gpt-oss-120b.md").read_text(encoding="utf-8")
+    assert record.count("## Summary (NotByDefault)") == 1 and record.count("fit check verdict") == 2
     third = client_for(p)
     run(p, did, third)
     assert third.transport.calls == []        # every request of an identical rerun is cached

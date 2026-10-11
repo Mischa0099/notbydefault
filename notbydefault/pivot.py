@@ -261,6 +261,11 @@ def resolve(graph, pivot: dict, status: str, prompt: str = "") -> list[int]:
                                   stale_reason=f"pivot #{pivot['id']} accepted: {pivot['data'].get('change')}",
                                   stale_cause=pivot["id"])
                 stale.append(did)
+    if stale and getattr(graph, "path", None) is not None:
+        from notbydefault.records import write_record   # fast: no Brain call from the hook
+        for did in stale:
+            write_record(graph.path.parents[1], graph, did,
+                         f"stale: pivot #{pivot['id']} accepted ({pivot['data'].get('change')})")
     return stale
 
 

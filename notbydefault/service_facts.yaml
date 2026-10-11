@@ -1,0 +1,37 @@
+# Documented data-residency facts for services (model providers live in fit/providers.yaml).
+# Override or extend per project in <project>/.notbydefault/service_facts.yaml (same shape).
+#
+#   residency: deployment   where the data lives depends on how it is deployed (self-hosted, or a
+#                           region picked per project/cluster). A residency requirement makes such a
+#                           decision NEEDS REVIEW, never stale: nothing documented says it conflicts.
+#   residency: [US, ...]    regions the vendor documents as the only ones it keeps data in. A
+#                           requirement for another region makes the decision STALE.
+#   provider: <name>        take the documented regions from fit/providers.yaml (e.g. groq)
+# Keys are the service names detect.py reports (case-insensitive).
+services:
+  MongoDB:
+    residency: deployment
+    how: self-hosted anywhere, or MongoDB Atlas with the cloud region chosen per cluster
+    source: https://www.mongodb.com/docs/atlas/reference/cloud-providers/
+  PostgreSQL:
+    residency: deployment
+    how: self-hosted, or a managed provider whose region is chosen per instance
+    source: https://www.postgresql.org/docs/current/
+  MySQL:
+    residency: deployment
+    how: self-hosted, or a managed provider whose region is chosen per instance
+    source: https://dev.mysql.com/doc/
+  Redis:
+    residency: deployment
+    how: self-hosted, or a managed provider whose region is chosen per instance
+    source: https://redis.io/docs/latest/
+  Supabase:
+    residency: deployment
+    how: the region is chosen when the Supabase project is created
+    source: https://supabase.com/docs/guides/platform/regions
+  Firebase:
+    residency: deployment
+    how: Firestore and Cloud Storage locations are chosen per database / bucket
+    source: https://firebase.google.com/docs/projects/locations
+  Groq:
+    provider: groq

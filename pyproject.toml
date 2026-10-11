@@ -18,4 +18,5 @@ include = ["notbydefault*"]
 testpaths = ["tests"]
 
 [tool.setuptools.package-data]
+"notbydefault" = ["*.yaml"]
 "notbydefault.fit" = ["*.yaml"]

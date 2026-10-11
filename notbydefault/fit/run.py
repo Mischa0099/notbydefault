@@ -145,6 +145,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
         if decision["data"].get("kind") != "model":
             out(f"Decision #{decision_id}: {decision['label']} "
                 f"[{decision['data'].get('kind')}/{decision['data'].get('category')}]")
+            print_briefing(project, g, decision_id, out)
             out("service fit: not implemented yet (only model decisions can be re-tested)")
             return 0
 
@@ -167,6 +168,9 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
             if all(not allowed(m) for m in cfg["candidates"]):
                 return blocked_by_requirements(g, project, decision, cfg, reqs, client, why_not,
                                                tracer, out)
+        from notbydefault.affected import refresh as refresh_affected
+        affected = refresh_affected(project, [decision_id], graph=g)[decision_id]
+        decision = g.get_node(decision_id)
         site = callsite_mod.locate(project, decision)
         cached_site = callsite_mod.load_cached(project, decision_id, site)
         vpath = verifiers_mod.verifier_path(project, decision_id)
@@ -182,6 +186,8 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                             (cached_site or site).system_prompt)
         out(f"Fit test for decision #{decision_id}: {decision['label']} -> {cfg['chosen']}")
         out(f"  call site:   {site.file}:{site.line}")
+        out(f"  affects:     " + (", ".join(_describe_entries(affected.entries)) or "nothing found")
+            + f"  ({affected.source})")
         out(f"  candidates:  {', '.join(cfg['candidates'])}"
             + (f"  (new: {candidates_mod.config_path(project)})" if created else ""))
         out(f"  setups:      each model alone, and + verifier with <= {cfg['max_retries']} retries")
@@ -195,6 +201,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
             " (cached responses are reused, never re-requested)")
         out(f"  estimated cost: ${est:.2f}" + (" at list price (run on free tier)" if free else "")
             + f"   (hard cap --max-cost ${opts.max_cost:.2f})")
+        print_briefing(project, g, decision_id, out)
         if est > opts.max_cost:
             out(f"Estimated cost exceeds --max-cost ${opts.max_cost:.2f}; not running. "
                 "Raise --max-cost or use fewer samples/candidates.")
@@ -224,6 +231,13 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                     "candidates": cfg["candidates"], "judge": cfg["judge"],
                                     "verifier_model": cfg["verifier_model"],
                                     "inputs": n_inputs, "estimated_cost_usd": round(est, 6)}):
+                tracer.event("affected_code" if affected.source == "entire-graph"
+                             else "affected_code_fallback",
+                             "context" if affected.source == "entire-graph" else "recovery",
+                             f"{len(affected.entries)} code locations in {len(affected.files)} files "
+                             f"use {decision['label']} ({affected.source})"
+                             + (f": {affected.note}" if affected.note else ""),
+                             files=affected.files)
                 for model, why in cfg["why"].items():
                     tracer.event("judge_selected" if model in cfg["judges"] else "candidate_selected",
                                  "planning", why, model=model)
@@ -399,11 +413,16 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                                      or "no recoveries needed")
                                   + f" (full journal in {rctx.results_path})")
                 if not stopped:
+                    from notbydefault import records as records_mod
                     record = write_decision_record(project, stats, verdict, rctx,
-                                                   run_at.date().isoformat())
+                                                   run_at.date().isoformat(),
+                                                   records_mod.existing_path(project, decision))
                     rctx.notes.insert(0, f"Decision record: {_rel(record, project)}")
                     record_review(g, decision, verdict, stats, rctx, results_path, record, pricing,
                                   prices, vpath)
+                    records_mod.write_records(project, g, [decision_id],
+                                              f"fit check verdict: {verdict.kind} ({verdict.summary})",
+                                              tracer, out=rctx.notes.append)
                 results_path.write_text(json.dumps({
                     "decision_id": decision_id, "literal": decision["label"],
                     "run_at": run_at.isoformat(), "config": cfg, "callsite": site.to_dict(),
@@ -427,6 +446,24 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
         out(render(stats, verdict, rctx))
     tracer.flush()
     return 0
+
+
+def print_briefing(project: Path, g: Graph, decision_id: int, out) -> None:
+    """The hook's briefing without its 4-line limit, after a live refresh of the Entire cache."""
+    from notbydefault.briefing import build, refresh_cache
+    cache = refresh_cache(project, [decision_id])
+    lines = build(project, g, g.get_node(decision_id), limit=None)
+    out("  briefing:    " + ("" if lines else "nothing related recorded yet"))
+    for line in lines:
+        out(f"    - {line}")
+    for key, why in (cache.get("errors") or {}).items():
+        out(f"    ({key}: {why})")
+
+
+def _describe_entries(entries: list[dict], limit: int = 6) -> list[str]:
+    from notbydefault.affected import describe
+    out = [describe(e) for e in entries[:limit]]
+    return out + ([f"+{len(entries) - limit} more"] if len(entries) > limit else [])
 
 
 def plan_text(decision: dict, cfg: dict, site, n_inputs: int, est: float,
@@ -568,6 +605,10 @@ def blocked_by_requirements(g: Graph, project: Path, decision: dict, cfg: dict, 
                 "providers": facts, "checked_at": now})
             g.add_edge(decision["id"], eid, "supported_by")
             g.update_data(decision["id"], blocked_by=[n["id"] for n in reqs], last_check=now)
+            from notbydefault import records as records_mod
+            records_mod.write_records(project, g, [decision["id"]],
+                                      "fit check blocked: no model in the catalog meets the "
+                                      "requirements", tracer)
     out(f"Decision #{decision['id']} ({decision['label']} -> {cfg['chosen']}) can't be re-tested: "
         "no model in the catalog meets the project's requirements.")
     for n in reqs:

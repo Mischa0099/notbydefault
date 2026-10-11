@@ -246,10 +246,61 @@ def test_require_marks_affected_decisions_stale(project):
         assert req["data"]["constraints"] == {"data_residency": "EU"}
         model = g.get_node(did)["data"]
         assert model["status"] == "stale" and "documents data residency" in model["stale_reason"]
-        assert g.get_node(db)["data"]["status"] == "stale"          # judged by the model
+        assert model["stale_basis"] == "provider documentation"
+        # MongoDB can be self-hosted in the EU: a review, not a provable conflict
+        mongo = g.get_node(db)["data"]
+        assert mongo["status"] == "needs_review" and "deployed" in mongo["review_reason"]
+        assert mongo["review_basis"] == "depends on deployment"
         assert {"src": did, "dst": req["id"], "type": "depends_on"} in g.edges()
-    assert "2 of 2 decisions are now stale" in report
-    assert "code: actions.py" in report and "code: requirements.txt" in report
+        assert {"src": db, "dst": req["id"], "type": "depends_on"} in g.edges()
+    assert "1 of 2 decisions provably conflict" in report
+    assert "1 of 2 decisions NEED REVIEW" in report
+    assert report.index("STALE") < report.index("#" + str(db) + " MongoDB")
+    assert "code:  actions.py" in report and "code:  requirements.txt" in report
+
+
+def test_model_judgement_alone_never_marks_stale(project):
+    """No documented fact for this service: the judge's 'affected' only asks for a review."""
+    p, did, db = project
+    with Graph.for_project(p) as g:
+        stripe = g.add_node("decision", "Stripe", {"kind": "service", "category": "database",
+                                                   "status": "unreviewed", "file": "pay.py"})
+    code, report, _ = run_require(p, "We signed an EU customer: EU data residency required")
+    with Graph.for_project(p) as g:
+        d = g.get_node(stripe)["data"]
+        assert d["status"] == "needs_review" and d["review_basis"].startswith("model judgement")
+        assert "stale_reason" not in d
+
+
+def test_service_with_documented_region_is_stale(project):
+    p, did, db = project
+    with Graph.for_project(p) as g:
+        groq = g.add_node("decision", "Groq", {"kind": "service", "category": "ai-provider",
+                                               "status": "unreviewed", "file": "requirements.txt"})
+    run_require(p, "We signed an EU customer: EU data residency required")
+    with Graph.for_project(p) as g:
+        d = g.get_node(groq)["data"]
+        assert d["status"] == "stale" and d["stale_basis"] == "service documentation"
+        assert "console.groq.com/docs/your-data" in d["stale_source"] or d["stale_source"] == ""
+
+
+def test_classify_rules():
+    from notbydefault.stale import classify, service_residency
+    facts = {"mongodb": {"name": "MongoDB", "residency": "deployment", "how": "self-hosted",
+                         "source": "https://x"},
+             "acme": {"name": "Acme", "residency": ["US"], "source": "https://acme"}}
+    eu = {"data_residency": "EU"}
+    svc = lambda label: {"label": label, "data": {"kind": "service"}}
+    assert service_residency(svc("MongoDB"), eu, {}, facts)["status"] == "needs_review"
+    assert service_residency(svc("Acme"), eu, {}, facts)["status"] == "stale"
+    assert service_residency(svc("Acme"), {"data_residency": "US"}, {}, facts) is None
+    assert service_residency(svc("MongoDB"), {}, {}, facts) is None
+    c = classify(svc("Other"), eu, {"affected": True, "reason": "r"}, None, {}, facts)
+    assert c["status"] == "needs_review"
+    c = classify(svc("Other"), eu, {"affected": False, "reason": "r"}, None, {}, facts)
+    assert c["status"] == "valid"
+    c = classify(svc("Other"), eu, {"affected": None, "reason": "err"}, None, {}, facts)
+    assert c["status"] == "unclear"
 
 
 def test_require_without_matching_decisions(project):
@@ -341,3 +392,16 @@ def test_budget_conflict_does_not_depend_on_the_model(project):
     out, _, _ = hook(p, "actually, let's switch to gpt-4o for action items", transport=NoConflicts())
     text = out["hookSpecificOutput"]["additionalContext"]
     assert "Monthly budget: 375" in text and "18x the budget" in text
+
+
+def test_require_writes_decision_records_for_both_lists(project):
+    p, did, db = project
+    code, report, _ = run_require(p, "We signed an EU customer: EU data residency required")
+    recs = sorted((p / "decisions").glob("*.md"))
+    assert len(recs) == 2 and "Decision records updated:" in report
+    assert "Entire Brain is not installed" in report          # graceful skip, with how-to
+    texts = {r.name: r.read_text(encoding="utf-8") for r in recs}
+    stale = next(t for t in texts.values() if "openai/gpt-oss-120b" in t)
+    review = next(t for t in texts.values() if "MongoDB" in t)
+    assert "STALE" in stale and "documents data residency" in stale
+    assert "Needs review" in review and "mongodb.com" in review

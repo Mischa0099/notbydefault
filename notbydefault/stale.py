@@ -1,8 +1,13 @@
 """Stale decisions: `notbydefault require <project> "<new requirement>"`.
 
-Adds a requirement node, turns it into machine-checkable constraints, judges every existing
-decision against it (a model, plus documented provider facts that override the model), and
-marks the affected decisions stale with the reason and an edge to the requirement.
+Adds a requirement node, turns it into machine-checkable constraints, and sorts every existing
+decision into one of three lists:
+  stale         it provably conflicts: a documented fact breaks the requirement (e.g. the
+                provider documents that data stays in the US and EU residency is required)
+  needs review  it might conflict, but that depends on how it is deployed (self-hosted MongoDB
+                can run in the EU), or only the model's judgement says so (nothing documented)
+  still valid   neither
+Each affected decision gets the reason, its basis and source, and an edge to the requirement.
 """
 from __future__ import annotations
 
@@ -57,6 +62,51 @@ def provider_facts(decision: dict, pricing, catalog: dict) -> tuple[str | None, 
     return model, residency(catalog, model), str(cfg.get("data_residency_source", ""))
 
 
+def load_service_facts(project: Path | None = None) -> dict:
+    """{service name lowercased: facts} from service_facts.yaml (+ the project's override)."""
+    import yaml
+    from notbydefault import PACKAGE_DIR
+    facts = {}
+    paths = [PACKAGE_DIR / "service_facts.yaml"]
+    if project is not None:
+        paths.append(Path(project) / ".notbydefault" / "service_facts.yaml")
+    for path in paths:
+        if path.exists():
+            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            for name, f in (data.get("services") or {}).items():
+                facts[str(name).lower()] = dict(f or {}, name=name)
+    return facts
+
+
+def service_residency(decision: dict, constraints: dict, catalog: dict,
+                      facts: dict) -> dict | None:
+    """Documented residency verdict for a service decision:
+    {"status": "stale"|"needs_review", "reason", "source"} or None (no fact / no constraint)."""
+    region = (constraints.get("data_residency") or "").upper()
+    if not region or decision["data"].get("kind") != "service":
+        return None
+    f = facts.get(decision["label"].lower())
+    if not f:
+        return None
+    if f.get("residency") == "deployment":
+        return {"status": "needs_review", "source": f.get("source", ""),
+                "reason": f"{f['name']}: where its data lives depends on how it is deployed "
+                          f"({f.get('how', 'not documented')}); confirm it runs in {region}"}
+    if f.get("provider"):
+        cfg = (catalog.get("providers") or {}).get(f["provider"], {})
+        regions = [str(r).upper() for r in cfg.get("data_residency") or []]
+        source = str(cfg.get("data_residency_source", ""))
+    else:
+        regions = [str(r).upper() for r in f.get("residency") or []]
+        source = f.get("source", "")
+    if region in regions:
+        return None
+    return {"status": "stale", "source": source,
+            "reason": f"{f['name']} documents data residency: "
+                      f"{', '.join(regions) or 'no region guaranteed'} (source: {source}); "
+                      f"{region} residency is required"}
+
+
 def residency_violation(decision: dict, constraints: dict, pricing, catalog: dict) -> str | None:
     """A documented reason the decision breaks the residency constraint, or None."""
     region = (constraints.get("data_residency") or "").upper()
@@ -86,6 +136,31 @@ def judge_decision(caller, model: str, decision: dict, text: str, constraints: d
         focus_area="verification", attrs={"notbydefault.decision_id": decision["id"]})
     out = parse_json(reply.text)
     return {"affected": bool(out.get("affected")), "reason": str(out.get("reason") or "").strip()}
+
+
+def classify(decision: dict, constraints: dict, verdict: dict, pricing, catalog: dict,
+             facts: dict) -> dict:
+    """{"status": "stale"|"needs_review"|"valid"|"unclear", "reason", "basis", "source"}.
+
+    Only a documented fact makes a decision stale; the model's judgement alone can at most ask
+    for a review, so a guess never invalidates a decision.
+    """
+    documented = residency_violation(decision, constraints, pricing, catalog)
+    if documented:
+        _m, _r, source = provider_facts(decision, pricing, catalog)
+        return {"status": "stale", "reason": documented, "basis": "provider documentation",
+                "source": source}
+    svc = service_residency(decision, constraints, catalog, facts)
+    if svc:
+        basis = ("service documentation" if svc["status"] == "stale"
+                 else "depends on deployment")
+        return {**svc, "basis": basis}
+    if verdict.get("affected") is None:
+        return {"status": "unclear", "reason": verdict.get("reason", ""), "basis": "", "source": ""}
+    if verdict["affected"]:
+        return {"status": "needs_review", "basis": "model judgement (nothing documented)",
+                "source": "", "reason": verdict.get("reason") or "the judge thinks it is affected"}
+    return {"status": "valid", "reason": verdict.get("reason", ""), "basis": "", "source": ""}
 
 
 def require(project: Path, text: str, client=None, tracer=None, out=print,
@@ -133,10 +208,15 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
                 "summary": str(raw.get("summary") or "")})
             tracer.event("requirement_added", "state", f"#{rid}: {text}", requirement_id=rid,
                          constraints=constraints)
+        with tracer.step("affected_code", "context",
+                         reason="find every function each decision touches (Entire Graph), so "
+                                "the judge and the report see all of it"):
+            from notbydefault.affected import refresh as refresh_affected
+            refresh_affected(project, graph=g, tracer=tracer)
         decisions = g.nodes("decision")
+        service_facts = load_service_facts(project)
 
         def one(d: dict) -> dict:
-            documented = residency_violation(d, constraints, pricing, catalog)
             m, regions, source = provider_facts(d, pricing, catalog)
             facts = (f"provider model {m}; documented data residency: "
                      f"{', '.join(regions) or 'none guaranteed'} ({source})") if m else ""
@@ -146,51 +226,106 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
                 verdict = {"affected": None, "reason": f"could not judge: {e}"}
                 tracer.event("judge_failed", "recovery",
                              f"decision #{d['id']}: {e}; left unchanged", decision_id=d["id"])
-            if documented:   # documented facts beat the model's opinion
-                verdict = {"affected": True, "reason": documented, "basis": "provider documentation"}
-            return {"decision": d, **verdict}
+            c = classify(d, constraints, verdict, pricing, catalog, service_facts)
+            if verdict.get("affected") and c["status"] == "needs_review" \
+                    and c["basis"].startswith("model"):
+                tracer.event("downgrade_to_review", "verification",
+                             f"#{d['id']}: the judge says affected but nothing documented proves "
+                             "a conflict; asking for review instead of marking it stale",
+                             decision_id=d["id"])
+            return {"decision": d, "affected": verdict.get("affected"), **c}
 
         with tracer.step("judge_decisions", "verification",
                          reason=f"check {len(decisions)} decisions against the new requirement"):
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 results = list(pool.map(tracer.bind(one), decisions))
-        with tracer.step("mark_stale", "state", reason="mark affected decisions stale"):
+        with tracer.step("mark_stale", "state",
+                         reason="mark provable conflicts stale and the rest needs-review"):
             for r in results:
                 d = r["decision"]
-                if r["affected"]:
+                if r["status"] == "stale":
                     g.update_data(d["id"], status="stale", stale_reason=r["reason"],
+                                  stale_basis=r["basis"], stale_source=r["source"],
                                   stale_since=now, stale_cause=rid,
                                   status_before_stale=d["data"].get("status"))
-                    g.add_edge(d["id"], rid, "depends_on")
-                    tracer.event("decision_stale", "planning",
-                                 f"#{d['id']} {d['label']}: {r['reason']}", decision_id=d["id"],
-                                 requirement_id=rid)
+                elif r["status"] == "needs_review":
+                    g.update_data(d["id"], status="needs_review", review_reason=r["reason"],
+                                  review_basis=r["basis"], review_source=r["source"],
+                                  review_since=now, review_cause=rid,
+                                  status_before_review=d["data"].get("status"))
+                else:
+                    continue
+                g.add_edge(d["id"], rid, "depends_on")
+                tracer.event("decision_" + r["status"], "planning",
+                             f"#{d['id']} {d['label']}: {r['reason']} ({r['basis']})",
+                             decision_id=d["id"], requirement_id=rid)
             g.update_data(rid, judged={str(r["decision"]["id"]): {
-                "affected": r["affected"], "reason": r["reason"]} for r in results})
+                "status": r["status"], "affected": r["affected"], "reason": r["reason"],
+                "basis": r["basis"], "source": r["source"]} for r in results})
+        changed = [r for r in results if r["status"] in ("stale", "needs_review")]
+        brain_notes: list[str] = []
+        if changed:
+            with tracer.step("decision_records", "state",
+                             reason="write each verdict into its decision record (and Brain)"):
+                from notbydefault.records import write_records
+                for r in changed:
+                    write_records(project, g, [r["decision"]["id"]],
+                                  f"{r['status'].replace('_', ' ')} after requirement #{rid} "
+                                  f"\"{text}\": {r['reason']}", tracer, out=brain_notes.append)
+        for r in results:   # reload so the report shows what was stored
+            r["decision"] = g.get_node(r["decision"]["id"])
 
-    stale = [r for r in results if r["affected"]]
-    out(f"Requirement #{rid}: {text}")
-    if constraints:
-        out(f"  checks: {json.dumps(constraints)}")
-    out(f"\n{len(stale)} of {len(results)} decisions are now stale:" if stale
-        else f"\nNo decisions are affected ({len(results)} checked).")
-    for r in stale:
-        d = r["decision"]
-        code = ", ".join(find_affected_code(d)) or "no code recorded"
-        out(f"  #{d['id']} {d['label']} [{d['data'].get('kind')}/{d['data'].get('category')}]")
-        out(f"      why:  {r['reason']}")
-        out(f"      code: {code}")
-    unclear = [r for r in results if r["affected"] is None]
-    for r in unclear:
-        out(f"  #{r['decision']['id']} {r['decision']['label']}: {r['reason']}")
-    ok = [r for r in results if r["affected"] is False]
-    if ok:
-        out("\nStill valid:")
-        out("\n".join(f"  #{r['decision']['id']} {r['decision']['label']}: {r['reason']}" for r in ok))
-    if stale:
-        out("\nRe-test a stale model decision with `python -m notbydefault check <id>`; it "
-            "applies the new requirement's checks to the candidates.")
+    report(rid, text, constraints, results, out)
+    recs = [r["decision"]["data"].get("decision_record") for r in results
+            if r["status"] in ("stale", "needs_review")]
+    if recs:
+        out("\nDecision records updated: " + ", ".join(sorted({x for x in recs if x})))
+        for note in dict.fromkeys(brain_notes):
+            out(note)
     if tracer.trace_id:
         out(f"\nneatlogs trace id: {tracer.trace_id} (workflow notbydefault)")
     tracer.flush()
     return 0
+
+
+def _code(d: dict) -> str:
+    from notbydefault.affected import describe
+    from notbydefault.graph import affected_entries
+    entries = affected_entries(d)
+    shown = [describe(e) for e in entries[:6]]
+    if len(entries) > 6:
+        shown.append(f"+{len(entries) - 6} more")
+    return ", ".join(shown) or "no code recorded"
+
+
+def report(rid: int, text: str, constraints: dict, results: list[dict], out) -> None:
+    by = {s: [r for r in results if r["status"] == s]
+          for s in ("stale", "needs_review", "unclear", "valid")}
+    out(f"Requirement #{rid}: {text}")
+    if constraints:
+        out(f"  checks: {json.dumps(constraints)}")
+    if not by["stale"] and not by["needs_review"]:
+        out(f"\nNo decisions are affected ({len(results)} checked).")
+    for status, title in (("stale", "provably conflict (documented), now STALE"),
+                          ("needs_review", "NEED REVIEW (may conflict; not provable from the docs)")):
+        if not by[status]:
+            continue
+        out(f"\n{len(by[status])} of {len(results)} decisions {title}:")
+        for r in by[status]:
+            d = r["decision"]
+            out(f"  #{d['id']} {d['label']} [{d['data'].get('kind')}/{d['data'].get('category')}]")
+            out(f"      why:   {r['reason']}")
+            out(f"      basis: {r['basis']}" + (f" ({r['source']})" if r["source"] else ""))
+            out(f"      code:  {_code(d)}")
+    for r in by["unclear"]:
+        out(f"  #{r['decision']['id']} {r['decision']['label']}: {r['reason']}")
+    ok = by["valid"]
+    if ok:
+        out("\nStill valid:")
+        out("\n".join(f"  #{r['decision']['id']} {r['decision']['label']}: {r['reason']}" for r in ok))
+    if by["stale"]:
+        out("\nRe-test a stale model decision with `python -m notbydefault check <id>`; it "
+            "applies the new requirement's checks to the candidates.")
+    if by["needs_review"]:
+        out("Needs-review decisions are not invalid: confirm how each is deployed (or that the "
+            "judge is wrong) and record it in its decision record.")

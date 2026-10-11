@@ -158,13 +158,28 @@ class Graph:
         return sorted(seen.values(), key=lambda n: n["id"])
 
 
-def find_affected_code(decision: dict) -> list[str]:
+def find_affected_code(decision: dict, project: str | Path | None = None,
+                       entire=None) -> list[str]:
     """Files a decision affects.
 
-    Stub: later this will query Entire Graph for every caller/consumer of the
-    chosen service or model. For now it returns the file(s) the tool calls touched.
+    With `project`, asks Entire Graph now for every file/function using the chosen service or
+    model (notbydefault.affected). Without it, returns what that analysis stored on the decision
+    (`notbydefault affected <id>`, `check`, `require` and the hook's background refresh store it)
+    plus the files the tool calls touched, or only the touched files when it hasn't run yet or
+    entire-graph is unavailable.
     """
-    data = decision.get("data", {})
-    if data.get("files"):
-        return list(data["files"])
-    return [data["file"]] if data.get("file") else []
+    from notbydefault.affected import find_affected_code as analyze, touched_files
+    if project is not None:
+        return analyze(decision, Path(project), entire).files
+    files = dict.fromkeys(touched_files(decision))
+    files.update(dict.fromkeys((decision.get("data") or {}).get("affected_files") or []))
+    return list(files)
+
+
+def affected_entries(decision: dict) -> list[dict]:
+    """Stored function-level entries (path, symbol, line, via), or file-level touched files."""
+    data = decision.get("data") or {}
+    if data.get("affected_code"):
+        return list(data["affected_code"])
+    from notbydefault.affected import fallback
+    return fallback(decision, "").entries
