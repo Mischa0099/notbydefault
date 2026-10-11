@@ -1,0 +1,190 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4MDMXYX994R06GPCXGP9PAM",
+  "session_id": "79b06ab0-b94a-459b-99c6-4eb804794916",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T02:46:14.0708725Z",
+  "branch": "main",
+  "checkpoints_count": 5,
+  "save_step_count": 5,
+  "files_touched": [
+    "README.md",
+    "notbydefault/affected.py",
+    "notbydefault/briefing.py",
+    "notbydefault/checkpoints.py",
+    "notbydefault/cli.py",
+    "notbydefault/fit/providers.yaml",
+    "notbydefault/fit/report.py",
+    "notbydefault/fit/run.py",
+    "notbydefault/graph.py",
+    "notbydefault/hooks/pre_tool.py",
+    "notbydefault/pivot.py",
+    "notbydefault/scout.py",
+    "notbydefault/service_facts.yaml",
+    "notbydefault/stale.py",
+    "notbydefault/why.py",
+    "pyproject.toml",
+    "tests/conftest.py",
+    "tests/fixtures/demo_graph/actions.py",
+    "tests/fixtures/demo_graph/app.py",
+    "tests/fixtures/demo_graph/edges.ndjson",
+    "tests/fixtures/demo_graph/plugin_list.txt",
+    "tests/fixtures/demo_graph/requirements.txt",
+    "tests/fixtures/demo_graph/symbols.ndjson",
+    "tests/test_briefing.py",
+    "tests/test_checkpoints.py",
+    "tests/test_entire_affected.py",
+    "tests/test_fit_check.py",
+    "tests/test_pivot_stale.py",
+    "tests/test_scout.py",
+    "tests/test_why.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "7cabd733f35a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 298,
+    "cache_creation_tokens": 619409,
+    "cache_read_tokens": 34405476,
+    "output_tokens": 135747,
+    "api_call_count": 151
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-11T02:46:13.9568408Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 2531,
+    "human_modified": 6500,
+    "human_removed": 0,
+    "total_committed": 5527,
+    "total_lines_changed": 9031,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 193,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/entire.py": 185
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 2893,
+      "user_lines_removed": 1914,
+      "agent_lines_added": 2321,
+      "agent_lines_removed": 1158,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/affected.py": 4,
+        "notbydefault/brain.py": 72,
+        "notbydefault/briefing.py": 290,
+        "notbydefault/cli.py": 25,
+        "notbydefault/entire.py": 190,
+        "notbydefault/fit/report.py": 294,
+        "notbydefault/fit/run.py": 24,
+        "notbydefault/hooks/pre_tool.py": 238,
+        "notbydefault/pivot.py": 406,
+        "notbydefault/records.py": 186,
+        "notbydefault/stale.py": 331,
+        "tests/conftest.py": 1,
+        "tests/test_fit_check.py": 313,
+        "tests/test_pivot_stale.py": 404,
+        "tests/test_records_brain.py": 107
+      },
+      "user_removed_per_file": {
+        "notbydefault/entire.py": 185,
+        "notbydefault/fit/report.py": 292,
+        "notbydefault/fit/run.py": 1,
+        "notbydefault/hooks/pre_tool.py": 189,
+        "notbydefault/pivot.py": 401,
+        "notbydefault/stale.py": 196,
+        "tests/test_fit_check.py": 310,
+        "tests/test_pivot_stale.py": 340
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 580,
+      "user_lines_removed": 183,
+      "agent_lines_added": 5527,
+      "agent_lines_removed": 2699,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/affected.py": 4,
+        "notbydefault/brain.py": 72,
+        "notbydefault/entire.py": 203,
+        "notbydefault/records.py": 186,
+        "tests/test_records_brain.py": 107
+      },
+      "user_removed_per_file": {
+        "notbydefault/entire.py": 183
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 580,
+      "user_lines_removed": 183,
+      "agent_lines_added": 5563,
+      "agent_lines_removed": 2699,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/affected.py": 4,
+        "notbydefault/brain.py": 72,
+        "notbydefault/entire.py": 203,
+        "notbydefault/records.py": 186,
+        "tests/test_records_brain.py": 107
+      },
+      "user_removed_per_file": {
+        "notbydefault/entire.py": 183
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 580,
+      "user_lines_removed": 185,
+      "agent_lines_added": 5563,
+      "agent_lines_removed": 2699,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/affected.py": 4,
+        "notbydefault/brain.py": 72,
+        "notbydefault/entire.py": 203,
+        "notbydefault/records.py": 186,
+        "tests/test_records_brain.py": 107
+      },
+      "user_removed_per_file": {
+        "msg.txt": 2,
+        "notbydefault/entire.py": 183
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 580,
+      "user_lines_removed": 185,
+      "agent_lines_added": 5563,
+      "agent_lines_removed": 2699,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "notbydefault/affected.py": 4,
+        "notbydefault/brain.py": 72,
+        "notbydefault/entire.py": 203,
+        "notbydefault/records.py": 186,
+        "tests/test_records_brain.py": 107
+      },
+      "user_removed_per_file": {
+        "msg.txt": 2,
+        "notbydefault/entire.py": 183
+      }
+    }
+  ]
+}

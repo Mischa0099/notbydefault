@@ -1,0 +1,132 @@
+<pasted_content id="5f78">
+Milestone 4: connect NotByDefault deeply to Entire.
+Use Groq for any LLM calls (Gemini's quota resets at 12:30 IST). Don't
+write to demo-app/.notbydefault; use a throwaway copy for tests and demos.
+Read the Entire CLI help/docs first (checkpoints, search, graph, brain);
+never guess commands. Degrade gracefully if a feature is unavailable.
+Do the parts in this order; finish and test each before the next.
+
+1. Affected code (must): implement find_affected_code(decision) with Entire
+   Graph, finding every file and function that uses the chosen
+   service/model, not just the file the tool call touched. Store them as
+   code nodes with "affects" edges. Fall back to current behavior if
+   entire-graph is unavailable.
+
+2. Stale vs needs review (must): when a requirement changes, mark a
+   decision "stale" only if it provably conflicts (documented fact, e.g.
+   provider data stays in the US), and "needs review" if it depends on how
+   it's deployed (e.g. self-hosted MongoDB could be in the EU). Show both
+   lists separately with reasons.
+
+3. Decision records + Brain (must): every verdict writes or updates
+   decisions/NNNN-<slug>.md (why, evidence links, rejected alternatives,
+   caveats) so it lands in the next Entire checkpoint. If entire-brain is
+   installed, also save the decision to Brain; if not, tell me how to
+   install it and skip gracefully.
+
+4. Briefing (should): when the hook catches a decision, include at most 4
+   lines: related past decisions and rejected alternatives (Decision Graph
+   + Entire search over past sessions/commits) and reusable existing code
+   (Entire Graph), each with a source id. Keep the hook fast: precompute or
+   cache; if a lookup would be slow, show the full briefing in `check`.
+
+5. `notbydefault why "<question>"` (should): answer from the Decision Graph
+   + Entire search + Graph, citing decision records, evidence files,
+   checkpoint/session ids and code locations. Say "no recorded reason" when
+   there isn't one; never invent history.
+
+6. Test scout (if time): for a decision, read the checkpoints/sessions that
+   touched its affected code, extract edge cases the agent discussed but
+   didn't test, and propose them as "suggested" verifier cases.
+
+7. Show `entire checkpoint list` for the commit that added a decision
+   record, and add to the README the checkpoint link format
+   https://entire.io/gh/Mischa0099/notbydefault/commit/<FULL_SHA>.
+
+Tests with mocked CLI and LLM calls. Tag every agent step and tool span in
+neatlogs with a "focus_area" attribute (planning, tool_use, state,
+context, execution, recovery, verification, iteration), and log reasons
+for plan changes and recoveries. Do not commit; write the commit message
+to msg.txt and show it to me.
+</pasted_content id="5f78">
+
+---
+
+<task-notification>
+<task-id>b454a400z</task-id>
+<tool-use-id>toolu_015vUE4YbUhUAzsy6b6xWNNJ</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\79b06ab0-b94a-459b-99c6-4eb804794916\tasks\b454a400z.output</output-file>
+<status>completed</status>
+<summary>Background command "Make throwaway demo copy and try graph search" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bv65v668h</task-id>
+<tool-use-id>toolu_01Gr3GfDg6tGmGnnyhKWKFNv</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\79b06ab0-b94a-459b-99c6-4eb804794916\tasks\bv65v668h.output</output-file>
+<status>completed</status>
+<summary>Background command "Run baseline test suite" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+The response was cut off twice while writing stale.py. Continue from there, but write stale.py in smaller pieces (create the file with the first part, then add the rest with separate edits), and keep each response short. First check the current state of the files.
+
+---
+
+<task-notification>
+<task-id>bkvk9piy2</task-id>
+<tool-use-id>toolu_011hCtUqGGiYwvq3Ex49RNsE</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\79b06ab0-b94a-459b-99c6-4eb804794916\tasks\bkvk9piy2.output</output-file>
+<status>completed</status>
+<summary>Background command "Run full test suite" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>by3jy95j2</task-id>
+<tool-use-id>toolu_012rSNiezCGZrC513ktbZgdx</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\79b06ab0-b94a-459b-99c6-4eb804794916\tasks\by3jy95j2.output</output-file>
+<status>completed</status>
+<summary>Background command "Add full briefing to check; run check tests" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bstgw380u</task-id>
+<tool-use-id>toolu_01YKTK2b7zFj7Ceycq8KBhTm</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\79b06ab0-b94a-459b-99c6-4eb804794916\tasks\bstgw380u.output</output-file>
+<status>completed</status>
+<summary>Background command "Run regression suites for check/hook/stale" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bnualpp2g</task-id>
+<tool-use-id>toolu_01MPVqCoHcepmGTr19rD85nj</tool-use-id>
+<output-file>C:\Users\misch\AppData\Local\Temp\claude\C--Users-misch-notbydefault\79b06ab0-b94a-459b-99c6-4eb804794916\tasks\bnualpp2g.output</output-file>
+<status>completed</status>
+<summary>Background command "Run stale/pivot tests" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<pasted_content id="5f78">
+You were cut off while reporting the end-to-end run. Keep it short: summarize
+the end-to-end results in a few lines (affected code found, stale vs needs
+review on the EU requirement, briefing output, `why` answer, trace id), then
+write the commit message to msg.txt and show it. Don't start anything new.
+</pasted_content id="5f78">
+
+---
+
+notepad msg.txt
+
+---
+
+notepad msg.txt

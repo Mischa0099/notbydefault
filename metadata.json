@@ -3,10 +3,38 @@
   "checkpoint_id": "01M4MDMXYX994R06GPCXGP9PAM",
   "strategy": "manual-commit",
   "branch": "main",
-  "checkpoints_count": 23,
+  "checkpoints_count": 28,
   "files_touched": [
+    "README.md",
+    "notbydefault/affected.py",
+    "notbydefault/briefing.py",
+    "notbydefault/checkpoints.py",
+    "notbydefault/cli.py",
+    "notbydefault/fit/providers.yaml",
+    "notbydefault/fit/report.py",
+    "notbydefault/fit/run.py",
     "notbydefault/graph.py",
-    "notbydefault/hooks/pre_tool.py"
+    "notbydefault/hooks/pre_tool.py",
+    "notbydefault/pivot.py",
+    "notbydefault/scout.py",
+    "notbydefault/service_facts.yaml",
+    "notbydefault/stale.py",
+    "notbydefault/why.py",
+    "pyproject.toml",
+    "tests/conftest.py",
+    "tests/fixtures/demo_graph/actions.py",
+    "tests/fixtures/demo_graph/app.py",
+    "tests/fixtures/demo_graph/edges.ndjson",
+    "tests/fixtures/demo_graph/plugin_list.txt",
+    "tests/fixtures/demo_graph/requirements.txt",
+    "tests/fixtures/demo_graph/symbols.ndjson",
+    "tests/test_briefing.py",
+    "tests/test_checkpoints.py",
+    "tests/test_entire_affected.py",
+    "tests/test_fit_check.py",
+    "tests/test_pivot_stale.py",
+    "tests/test_scout.py",
+    "tests/test_why.py"
   ],
   "sessions": [
     {
@@ -15,13 +43,20 @@
       "compact_transcript": "/0/transcript.jsonl",
       "content_hash": "/0/content_hash.txt",
       "prompt": "/0/prompt.txt"
+    },
+    {
+      "metadata": "/1/metadata.json",
+      "transcript": "/1/full.jsonl",
+      "compact_transcript": "/1/transcript.jsonl",
+      "content_hash": "/1/content_hash.txt",
+      "prompt": "/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 712,
-    "cache_creation_tokens": 714073,
-    "cache_read_tokens": 146074692,
-    "output_tokens": 536236,
-    "api_call_count": 350
+    "input_tokens": 1010,
+    "cache_creation_tokens": 1333482,
+    "cache_read_tokens": 180480168,
+    "output_tokens": 671983,
+    "api_call_count": 501
   }
 }
