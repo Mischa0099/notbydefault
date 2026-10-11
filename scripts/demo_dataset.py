@@ -14,12 +14,15 @@ Steps (each prints what it did; every trace id created is listed at the end):
   5. require    demo.py's EU data-residency requirement                     (Groq calls)
   6. an agent turn: the PreToolUse hook catches a new model choice; the agent's reason comes
      from a SCRIPTED transcript (scripts/demo_transcript.jsonl), labelled as such
-  7. claims     on that decision                                            (1 Groq call)
-  8. watch      re-evaluate the assumptions (and record the new decision's baseline)
-  9. scan       decision debt
---offline skips the steps that call Groq (4, 5, 7) for a quick dry build. A rebuild reuses the
+  7. reasons    a SCRIPTED agent reason on each earlier decision (stored as agent_reason, its
+                source saying so), since demo-app's own sessions recorded none
+  8. claims     on #21 first, then the other decisions and the agent turn's (1 Groq call each)
+  9. watch      re-evaluate the assumptions (and record the new decision's baseline)
+ 10. scan       decision debt
+ 11. shots      regenerate docs/screenshots from the dataset (#21's receipt as decision-*.png,
+                the agent turn's as decision-claims-*.png); --no-shots skips it
+--offline skips the steps that call Groq (4, 5, 8) for a quick dry build. A rebuild reuses the
 previous build's model-response cache (same prompts answered from disk); --fresh ignores it.
-Then `python scripts/ui_screenshots.py --project <out>/demo-app` renders it.
 """
 from __future__ import annotations
 
@@ -36,7 +39,9 @@ REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "demo-app"))
 
-TRACE = re.compile(r"\b([0-9a-f]{32})\b")
+# the line a command prints for the trace it created (claim sources also quote older fit-check
+# trace ids, which this run did not create)
+TRACE = re.compile(r"neatlogs trace id: ([0-9a-f]{32})")
 TRANSCRIPT = REPO / "scripts" / "demo_transcript.jsonl"
 DIGEST = '''"""Weekly digest of a team's notes (scripted demo turn)."""
 import os
@@ -54,6 +59,21 @@ def weekly_digest(notes: list[str]) -> str:
     )
     return response.choices[0].message.content
 '''
+# What the agent "said" when it made each of demo-app's earlier decisions. Scripted: demo-app's
+# sessions predate the hook recording reasons, and these give the claim check a mix of claims.
+REASONS = {
+    7: "I'll add pymongo and keep the notes in MongoDB. It's the most popular document database "
+       "and it's battle-tested in production.",
+    9: "I'll add the openai SDK. It's the industry standard for LLM APIs and everyone uses it.",
+    10: "I'll call gpt-4o for the summaries. It's the best model for summarisation and it's fast "
+        "enough for a web request.",
+    13: "Switching the summary to openai/gpt-oss-120b on Groq. It's much cheaper than gpt-4o, it's "
+        "really fast on Groq, and its summaries were as accurate as gpt-4o's.",
+    21: "I'll write actions.py with openai/gpt-oss-120b on Groq. It's cheap enough for our volume. "
+        "It's very fast on Groq. It's the most accurate open model at extracting action items. "
+        "Data stays in the EU, so we're GDPR compliant.",
+}
+REASON_SOURCE = "scripted demo reason (scripts/demo_dataset.py), not a real session"
 traces: list[tuple[str, str]] = []
 
 
@@ -63,7 +83,7 @@ def say(title: str) -> None:
 
 def note_traces(step: str, text: str) -> None:
     for t in dict.fromkeys(TRACE.findall(text)):
-        if ("trace" in text) and (step, t) not in traces:
+        if (step, t) not in traces:
             traces.append((step, t))
 
 
@@ -73,7 +93,7 @@ def captured(step: str, fn, *a, **kw):
     code = fn(*a, out=lines.append, **kw)
     text = "\n".join(lines)
     print(text)
-    note_traces(step, "\n".join(l for l in lines if "trace" in l))
+    note_traces(step, text)
     return code, text
 
 
@@ -184,6 +204,32 @@ def agent_turn(p: Path) -> int | None:
     return hit[-1]["id"] if hit else None
 
 
+def record_reasons(p: Path) -> list[int]:
+    """Store REASONS as each decision's agent_reason (only where none is recorded)."""
+    from notbydefault.graph import Graph
+    say("agent reasons on the earlier decisions (scripted, labelled as such)")
+    done = []
+    with Graph.for_project(p) as g:
+        for did, reason in REASONS.items():
+            d = g.get_node(did)
+            if not d or d["type"] != "decision" or d["data"].get("agent_reason"):
+                print(f"  #{did}: skipped ({'already has a reason' if d else 'not in the graph'})")
+                continue
+            g.update_data(did, agent_reason=reason, agent_reason_source=REASON_SOURCE)
+            print(f"  #{did} {d['label']}: {reason}")
+            done.append(did)
+    return done
+
+
+def screenshots(p: Path, decision: int, claims_decision: int | None) -> int:
+    say("screenshots -> docs/screenshots")
+    cmd = [sys.executable, str(REPO / "scripts" / "ui_screenshots.py"), "--project", str(p),
+           "--decision", str(decision)]
+    if claims_decision:
+        cmd += ["--claims-decision", str(claims_decision)]
+    return subprocess.run(cmd, cwd=REPO).returncode
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--out", default=str(REPO / ".demo-dataset"))
@@ -191,6 +237,7 @@ def main() -> int:
     ap.add_argument("--offline", action="store_true", help="skip the steps that call Groq")
     ap.add_argument("--fresh", action="store_true",
                     help="don't reuse the previous build's model-response cache")
+    ap.add_argument("--no-shots", action="store_true", help="don't regenerate docs/screenshots")
     args = ap.parse_args()
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(errors="replace", line_buffering=True)
@@ -212,23 +259,28 @@ def main() -> int:
         say(f'require "{REQUIREMENT}"')
         captured("require", require, p, REQUIREMENT)
     new_id = agent_turn(p)
-    if new_id and not args.offline:
-        say(f"claims {new_id}")
-        captured(f"claims {new_id}", claims_run, p, new_id)
+    reasoned = record_reasons(p)
+    if not args.offline:
+        first = [args.decision] if args.decision in reasoned else []
+        for did in first + [d for d in reasoned if d != args.decision] + [new_id] * bool(new_id):
+            say(f"claims {did}")
+            captured(f"claims {did}", claims_run, p, did)
     say("watch (after the requirement and the new decision)")
     captured("watch", watch, p)
     say("scan")
     captured("scan", scan, p)
+
+    shots = 0 if args.no_shots else screenshots(p, args.decision, new_id)
 
     say("trace ids created")
     for step, t in traces:
         print(f"  {step:<28} {t}")
     if not traces:
         print("  none (telemetry off, or --offline)")
-    print(f"\nDataset: {p}\nUI:      python -m notbydefault ui --project \"{p}\"\n"
-          f"Shots:   python scripts/ui_screenshots.py --project \"{p}\""
-          + (f" --claims-decision {new_id}" if new_id else ""))
-    return 0
+    print(f"\nDataset: {p}\nUI:      python -m notbydefault ui --project \"{p}\"")
+    if shots:
+        print(f"screenshots failed (exit {shots})")
+    return shots
 
 
 if __name__ == "__main__":
