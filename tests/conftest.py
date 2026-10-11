@@ -102,7 +102,8 @@ class FakeTransport:
         if system.startswith("You check whether an existing technical decision"):
             affected = "category: database" in user and "residency" in user.split("Machine-readable", 1)[0].lower()
             return "stale_judge", json.dumps({
-                "affected": affected, "reason": "stores customer data outside the EU" if affected
+                "affected": affected, "property": "stores customer data" if affected else "",
+                "reason": "stores customer data outside the EU" if affected
                 else "not related to where data is stored"})
         if "realistic test data" in system and "already exist" in user:
             n = int(re.search(r"Write (\d+) NEW", user).group(1))

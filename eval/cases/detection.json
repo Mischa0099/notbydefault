@@ -1,116 +1,391 @@
 {
   "_comment": "PreToolUse cases. `expect` lists what NotByDefault should flag (empty = must stay silent, no interruption). `files` exist in the project before the tool call; `graph` lists decisions already recorded (status reviewed = the user already accepted it). {project} is the throwaway project dir.",
   "cases": [
-    {"id": "det-pip-db-sdk", "why": "new database SDK",
-     "tool_name": "Bash", "tool_input": {"command": "pip install pymongo"},
-     "expect": ["MongoDB"]},
-    {"id": "det-npm-supabase", "why": "new backend-as-a-service SDK",
-     "tool_name": "Bash", "tool_input": {"command": "npm i @supabase/supabase-js"},
-     "expect": ["Supabase"]},
-    {"id": "det-pnpm-orm-and-db", "why": "two decisions in one install",
-     "tool_name": "Bash", "tool_input": {"command": "pnpm add drizzle-orm pg"},
-     "expect": ["Drizzle", "PostgreSQL"]},
-    {"id": "det-poetry-extras", "why": "package with extras",
-     "tool_name": "Bash", "tool_input": {"command": "poetry add \"psycopg[binary]\""},
-     "expect": ["PostgreSQL"]},
-    {"id": "det-ps-ai-provider", "why": "new AI provider via the Windows launcher",
-     "tool_name": "PowerShell", "tool_input": {"command": "py -3.12 -m pip install groq"},
-     "expect": ["Groq"]},
-    {"id": "det-uv-anthropic", "why": "new AI provider",
-     "tool_name": "Bash", "tool_input": {"command": "uv add anthropic"},
-     "expect": ["Anthropic"]},
-    {"id": "det-mixed-install", "why": "AI provider installed together with a test library",
-     "tool_name": "Bash", "tool_input": {"command": "pip install openai pytest"},
-     "expect": ["OpenAI"]},
-    {"id": "det-manifest-edit", "why": "new AI provider added to requirements.txt",
-     "files": {"requirements.txt": "flask\n"},
-     "tool_name": "Edit", "tool_input": {"file_path": "{project}/requirements.txt",
-                                         "old_string": "flask\n", "new_string": "flask\ngoogle-genai>=1.0\n"},
-     "expect": ["Google Gemini"]},
-    {"id": "det-package-json-write", "why": "new database driver in package.json",
-     "files": {"package.json": "{\n  \"dependencies\": {\n    \"express\": \"^4.19.0\"\n  }\n}\n"},
-     "tool_name": "Write", "tool_input": {"file_path": "{project}/package.json",
-                                          "content": "{\n  \"dependencies\": {\n    \"express\": \"^4.19.0\",\n    \"mongoose\": \"^8.5.0\"\n  }\n}\n"},
-     "expect": ["MongoDB"]},
-    {"id": "det-hardcoded-model-py", "why": "hardcoded model in new code",
-     "tool_name": "Write", "tool_input": {"file_path": "{project}/summarize.py",
-                                          "content": "import anthropic\n\nclient = anthropic.Anthropic()\n\ndef summarize(text):\n    return client.messages.create(model=\"claude-sonnet-4-5\", max_tokens=300,\n                                  messages=[{\"role\": \"user\", \"content\": text}])\n"},
-     "expect": ["claude-sonnet-4-5"]},
-    {"id": "det-model-swap-edit", "why": "changing the model in existing code is a new model choice",
-     "files": {"app.py": "MODEL = \"gpt-4o\"\n"},
-     "tool_name": "Edit", "tool_input": {"file_path": "{project}/app.py",
-                                         "old_string": "MODEL = \"gpt-4o\"", "new_string": "MODEL = \"gpt-4o-mini\""},
-     "expect": ["gpt-4o-mini"]},
-    {"id": "det-hardcoded-model-js", "why": "hardcoded model in JS, single quotes",
-     "tool_name": "Write", "tool_input": {"file_path": "{project}/src/ai.js",
-                                          "content": "import OpenAI from 'openai';\nconst client = new OpenAI();\nexport const ask = (q) => client.responses.create({ model: 'gpt-4.1', input: q });\n"},
-     "expect": ["gpt-4.1"]},
-    {"id": "det-env-model", "why": "model hardcoded in a .env file (no quotes)",
-     "tool_name": "Write", "tool_input": {"file_path": "{project}/.env",
-                                          "content": "OPENAI_MODEL=gpt-4o-mini\n"},
-     "expect": ["gpt-4o-mini"]},
-    {"id": "det-yaml-model", "why": "model hardcoded in a YAML config (no quotes)",
-     "tool_name": "Write", "tool_input": {"file_path": "{project}/config.yaml",
-                                          "content": "llm:\n  provider: google\n  model: gemini-2.5-flash\n"},
-     "expect": ["gemini-2.5-flash"]},
-    {"id": "det-shell-append-manifest", "why": "AI provider added to requirements.txt from the shell",
-     "files": {"requirements.txt": "flask\n"},
-     "tool_name": "Bash", "tool_input": {"command": "echo openai >> requirements.txt"},
-     "expect": ["OpenAI"]},
-
-    {"id": "neg-read-file", "why": "reading a file",
-     "tool_name": "Read", "tool_input": {"file_path": "{project}/app.py"},
-     "expect": []},
-    {"id": "neg-cat-file", "why": "reading a file from the shell",
-     "tool_name": "Bash", "tool_input": {"command": "cat requirements.txt"},
-     "expect": []},
-    {"id": "neg-grep-provider", "why": "searching for a provider name is not choosing it",
-     "tool_name": "Bash", "tool_input": {"command": "grep -rn openai ."},
-     "expect": []},
-    {"id": "neg-pip-show", "why": "inspecting an installed package",
-     "tool_name": "Bash", "tool_input": {"command": "pip show openai"},
-     "expect": []},
-    {"id": "neg-ordinary-edit", "why": "ordinary code edit",
-     "files": {"app.py": "def add(a, b):\n    return a + b\n"},
-     "tool_name": "Edit", "tool_input": {"file_path": "{project}/app.py",
-                                         "old_string": "return a + b", "new_string": "return a + b  # sum"},
-     "expect": []},
-    {"id": "neg-edit-near-existing-model", "why": "editing code that already uses the model",
-     "files": {"app.py": "MODEL = \"gpt-4o\"\n\ndef ask(q):\n    return call(MODEL, q)\n"},
-     "tool_name": "Edit", "tool_input": {"file_path": "{project}/app.py",
-                                         "old_string": "return call(MODEL, q)", "new_string": "return call(MODEL, q.strip())"},
-     "expect": []},
-    {"id": "neg-pip-test-lib", "why": "installing a test library",
-     "tool_name": "Bash", "tool_input": {"command": "pip install pytest pytest-cov"},
-     "expect": []},
-    {"id": "neg-npm-dev-test-lib", "why": "installing a test library",
-     "tool_name": "Bash", "tool_input": {"command": "npm install -D vitest"},
-     "expect": []},
-    {"id": "neg-pip-utility", "why": "installing an ordinary utility library",
-     "tool_name": "PowerShell", "tool_input": {"command": "py -3.12 -m pip install python-dotenv requests"},
-     "expect": []},
-    {"id": "neg-reinstall-requirements", "why": "reinstalling what is already declared",
-     "files": {"requirements.txt": "openai\npymongo\n"},
-     "tool_name": "Bash", "tool_input": {"command": "pip install -r requirements.txt"},
-     "expect": []},
-    {"id": "neg-npm-install-all", "why": "installing the existing lockfile",
-     "files": {"package.json": "{\"dependencies\": {\"mongoose\": \"^8.5.0\"}}\n"},
-     "tool_name": "Bash", "tool_input": {"command": "npm install"},
-     "expect": []},
-    {"id": "neg-run-tests", "why": "running the tests",
-     "tool_name": "Bash", "tool_input": {"command": "python -m pytest -q"},
-     "expect": []},
-    {"id": "neg-git-commit", "why": "a commit message naming a provider",
-     "tool_name": "Bash", "tool_input": {"command": "git commit -am \"Add OpenAI client wrapper\""},
-     "expect": []},
-    {"id": "neg-test-file-existing-model", "why": "a test asserting the model the app already uses",
-     "files": {"app.py": "MODEL = \"gpt-4o\"\n"},
-     "tool_name": "Write", "tool_input": {"file_path": "{project}/tests/test_app.py",
-                                          "content": "from app import MODEL\n\ndef test_model():\n    assert MODEL == \"gpt-4o\"\n"},
-     "expect": []},
-    {"id": "neg-reinstall-accepted", "why": "re-installing a provider the user already reviewed and kept",
-     "graph": [{"label": "OpenAI", "kind": "service", "category": "ai-provider", "status": "reviewed"}],
-     "tool_name": "Bash", "tool_input": {"command": "pip install --upgrade openai"},
-     "expect": []}
+    {
+      "id": "det-pip-db-sdk",
+      "why": "new database SDK",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pip install pymongo"
+      },
+      "expect": [
+        "MongoDB"
+      ]
+    },
+    {
+      "id": "det-npm-supabase",
+      "why": "new backend-as-a-service SDK",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm i @supabase/supabase-js"
+      },
+      "expect": [
+        "Supabase"
+      ]
+    },
+    {
+      "id": "det-pnpm-orm-and-db",
+      "why": "two decisions in one install",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pnpm add drizzle-orm pg"
+      },
+      "expect": [
+        "Drizzle",
+        "PostgreSQL"
+      ]
+    },
+    {
+      "id": "det-poetry-extras",
+      "why": "package with extras",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "poetry add \"psycopg[binary]\""
+      },
+      "expect": [
+        "PostgreSQL"
+      ]
+    },
+    {
+      "id": "det-ps-ai-provider",
+      "why": "new AI provider via the Windows launcher",
+      "tool_name": "PowerShell",
+      "tool_input": {
+        "command": "py -3.12 -m pip install groq"
+      },
+      "expect": [
+        "Groq"
+      ]
+    },
+    {
+      "id": "det-uv-anthropic",
+      "why": "new AI provider",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "uv add anthropic"
+      },
+      "expect": [
+        "Anthropic"
+      ]
+    },
+    {
+      "id": "det-mixed-install",
+      "why": "AI provider installed together with a test library",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pip install openai pytest"
+      },
+      "expect": [
+        "OpenAI"
+      ]
+    },
+    {
+      "id": "det-manifest-edit",
+      "why": "new AI provider added to requirements.txt",
+      "files": {
+        "requirements.txt": "flask\n"
+      },
+      "tool_name": "Edit",
+      "tool_input": {
+        "file_path": "{project}/requirements.txt",
+        "old_string": "flask\n",
+        "new_string": "flask\ngoogle-genai>=1.0\n"
+      },
+      "expect": [
+        "Google Gemini"
+      ]
+    },
+    {
+      "id": "det-package-json-write",
+      "why": "new database driver in package.json",
+      "files": {
+        "package.json": "{\n  \"dependencies\": {\n    \"express\": \"^4.19.0\"\n  }\n}\n"
+      },
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/package.json",
+        "content": "{\n  \"dependencies\": {\n    \"express\": \"^4.19.0\",\n    \"mongoose\": \"^8.5.0\"\n  }\n}\n"
+      },
+      "expect": [
+        "MongoDB"
+      ]
+    },
+    {
+      "id": "det-hardcoded-model-py",
+      "why": "hardcoded model in new code",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/summarize.py",
+        "content": "import anthropic\n\nclient = anthropic.Anthropic()\n\ndef summarize(text):\n    return client.messages.create(model=\"claude-sonnet-4-5\", max_tokens=300,\n                                  messages=[{\"role\": \"user\", \"content\": text}])\n"
+      },
+      "expect": [
+        "claude-sonnet-4-5"
+      ]
+    },
+    {
+      "id": "det-model-swap-edit",
+      "why": "changing the model in existing code is a new model choice",
+      "files": {
+        "app.py": "MODEL = \"gpt-4o\"\n"
+      },
+      "tool_name": "Edit",
+      "tool_input": {
+        "file_path": "{project}/app.py",
+        "old_string": "MODEL = \"gpt-4o\"",
+        "new_string": "MODEL = \"gpt-4o-mini\""
+      },
+      "expect": [
+        "gpt-4o-mini"
+      ]
+    },
+    {
+      "id": "det-hardcoded-model-js",
+      "why": "hardcoded model in JS, single quotes",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/src/ai.js",
+        "content": "import OpenAI from 'openai';\nconst client = new OpenAI();\nexport const ask = (q) => client.responses.create({ model: 'gpt-4.1', input: q });\n"
+      },
+      "expect": [
+        "gpt-4.1"
+      ]
+    },
+    {
+      "id": "det-env-model",
+      "why": "model hardcoded in a .env file (no quotes)",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/.env",
+        "content": "OPENAI_MODEL=gpt-4o-mini\n"
+      },
+      "expect": [
+        "gpt-4o-mini"
+      ]
+    },
+    {
+      "id": "det-yaml-model",
+      "why": "model hardcoded in a YAML config (no quotes)",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/config.yaml",
+        "content": "llm:\n  provider: google\n  model: gemini-2.5-flash\n"
+      },
+      "expect": [
+        "gemini-2.5-flash"
+      ]
+    },
+    {
+      "id": "det-shell-append-manifest",
+      "why": "AI provider added to requirements.txt from the shell",
+      "files": {
+        "requirements.txt": "flask\n"
+      },
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "echo openai >> requirements.txt"
+      },
+      "expect": [
+        "OpenAI"
+      ]
+    },
+    {
+      "id": "neg-read-file",
+      "why": "reading a file",
+      "tool_name": "Read",
+      "tool_input": {
+        "file_path": "{project}/app.py"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-cat-file",
+      "why": "reading a file from the shell",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "cat requirements.txt"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-grep-provider",
+      "why": "searching for a provider name is not choosing it",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "grep -rn openai ."
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-pip-show",
+      "why": "inspecting an installed package",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pip show openai"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-ordinary-edit",
+      "why": "ordinary code edit",
+      "files": {
+        "app.py": "def add(a, b):\n    return a + b\n"
+      },
+      "tool_name": "Edit",
+      "tool_input": {
+        "file_path": "{project}/app.py",
+        "old_string": "return a + b",
+        "new_string": "return a + b  # sum"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-edit-near-existing-model",
+      "why": "editing code that already uses the model",
+      "files": {
+        "app.py": "MODEL = \"gpt-4o\"\n\ndef ask(q):\n    return call(MODEL, q)\n"
+      },
+      "tool_name": "Edit",
+      "tool_input": {
+        "file_path": "{project}/app.py",
+        "old_string": "return call(MODEL, q)",
+        "new_string": "return call(MODEL, q.strip())"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-pip-test-lib",
+      "why": "installing a test library",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pip install pytest pytest-cov"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-npm-dev-test-lib",
+      "why": "installing a test library",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm install -D vitest"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-pip-utility",
+      "why": "installing an ordinary utility library",
+      "tool_name": "PowerShell",
+      "tool_input": {
+        "command": "py -3.12 -m pip install python-dotenv requests"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-reinstall-requirements",
+      "why": "reinstalling what is already declared",
+      "files": {
+        "requirements.txt": "openai\npymongo\n"
+      },
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pip install -r requirements.txt"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-npm-install-all",
+      "why": "installing the existing lockfile",
+      "files": {
+        "package.json": "{\"dependencies\": {\"mongoose\": \"^8.5.0\"}}\n"
+      },
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "npm install"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-run-tests",
+      "why": "running the tests",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "python -m pytest -q"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-git-commit",
+      "why": "a commit message naming a provider",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "git commit -am \"Add OpenAI client wrapper\""
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-test-file-existing-model",
+      "why": "a test asserting the model the app already uses",
+      "files": {
+        "app.py": "MODEL = \"gpt-4o\"\n"
+      },
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/tests/test_app.py",
+        "content": "from app import MODEL\n\ndef test_model():\n    assert MODEL == \"gpt-4o\"\n"
+      },
+      "expect": []
+    },
+    {
+      "id": "neg-reinstall-accepted",
+      "why": "re-installing a provider the user already reviewed and kept",
+      "graph": [
+        {
+          "label": "OpenAI",
+          "kind": "service",
+          "category": "ai-provider",
+          "status": "reviewed"
+        }
+      ],
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "pip install --upgrade openai"
+      },
+      "expect": []
+    },
+    {
+      "id": "ho-det-ini-model",
+      "why": "model in an INI config (unquoted)",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/config/llm.ini",
+        "content": "[llm]\nprovider = mistral\nmodel = mistral-large-latest\ntemperature = 0.2\n"
+      },
+      "expect": [
+        "mistral-large-latest"
+      ],
+      "split": "heldout"
+    },
+    {
+      "id": "ho-det-bun-clerk",
+      "why": "new auth provider via bun",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "bun add @clerk/nextjs"
+      },
+      "expect": [
+        "Clerk"
+      ],
+      "split": "heldout"
+    },
+    {
+      "id": "ho-neg-docs-mention",
+      "why": "docs comparing models, no choice made",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "{project}/docs/models.md",
+        "content": "# Models\n\nWe compared `gpt-4o` and `claude-sonnet-4-5` before picking one.\n"
+      },
+      "expect": [],
+      "split": "heldout"
+    }
   ]
 }

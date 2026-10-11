@@ -1,56 +1,177 @@
 {
   "_comment": "UserPromptSubmit cases against eval/cases/project.json. `pivot` is the right answer. For pivots, `decisions` are the decision keys the change must be mapped to (all of them; extra ones are allowed). Ordinary prompts deliberately use pivot-ish words (actually, instead, switch, replace, drop) and often name stack components.",
   "cases": [
-    {"id": "piv-db-switch", "pivot": true, "decisions": ["mongodb"],
-     "prompt": "Actually, let's switch from MongoDB to Postgres for the notes."},
-    {"id": "piv-provider-drop", "pivot": true, "decisions": ["openai_sdk"],
-     "prompt": "Drop the OpenAI SDK, we're moving everything to Anthropic's API."},
-    {"id": "piv-model-upgrade", "pivot": true, "decisions": ["gpt_oss_120b"],
-     "prompt": "What if we use gpt-4o for the action items instead? It's the best model."},
-    {"id": "piv-summarizer-model", "pivot": true, "decisions": ["gemini_lite"],
-     "prompt": "Let's replace gemini-3.1-flash-lite in summarize.py with claude-sonnet-4-5."},
-    {"id": "piv-cache-removal", "pivot": true, "decisions": ["redis"],
-     "prompt": "Get rid of Redis, we'll just cache in memory."},
-    {"id": "piv-goal-change", "pivot": true, "decisions": [],
-     "prompt": "Forget the 2-week MVP, we're building this as a full enterprise platform now."},
-    {"id": "piv-no-trigger-db", "pivot": true, "decisions": ["mongodb"],
-     "prompt": "Use Postgres for storage from now on, not Mongo."},
-    {"id": "piv-no-trigger-provider", "pivot": true, "decisions": ["gpt_oss_120b"],
-     "prompt": "We're going with Gemini 3.8 Flash for action items."},
-    {"id": "piv-self-host", "pivot": true, "decisions": ["gpt_oss_120b"],
-     "prompt": "Let's move off Groq and self-host the model on our own GPU box."},
-
-    {"id": "ord-actually-bug", "pivot": false,
-     "prompt": "Actually, the MongoDB insert is failing with a duplicate key error, can you look?"},
-    {"id": "ord-instead-404", "pivot": false,
-     "prompt": "Return 404 instead of 500 when a note isn't found in the database."},
-    {"id": "ord-instead-dict", "pivot": false,
-     "prompt": "In actions.py use a dict instead of a list for the parsed model output."},
-    {"id": "ord-replace-prints", "pivot": false,
-     "prompt": "Replace the print statements in the OpenAI client wrapper with logging."},
-    {"id": "ord-drop-import", "pivot": false,
-     "prompt": "Drop the unused redis import from reports.py."},
-    {"id": "ord-switch-env", "pivot": false,
-     "prompt": "Switch to reading the MongoDB connection string from an env var instead of hardcoding it."},
-    {"id": "ord-actually-timeout", "pivot": false,
-     "prompt": "Actually, set a 30 second timeout on the OpenAI client calls."},
-    {"id": "ord-rather-than", "pivot": false,
-     "prompt": "Rather than one big summarize function, split it into prompt building and the API call."},
-    {"id": "ord-migrate-schema", "pivot": false,
-     "prompt": "Migrate the notes collection to add a created_at field to every document."},
-    {"id": "ord-cache-key", "pivot": false,
-     "prompt": "Actually, change the Redis cache key to include the user id."},
-    {"id": "ord-let-us-use-fixture", "pivot": false,
-     "prompt": "Let's use a pytest fixture for the database connection instead of a global."},
-    {"id": "ord-explain-model", "pivot": false,
-     "prompt": "Why did we go with gpt-oss-120b for action items again?"},
-    {"id": "ord-move-config", "pivot": false,
-     "prompt": "Move the model name to a constant at the top of actions.py instead of inline."},
-    {"id": "ord-retry", "pivot": false,
-     "prompt": "Instead of crashing when the API returns 429, retry with backoff."},
-    {"id": "ord-plain", "pivot": false,
-     "prompt": "Add a /health endpoint that returns ok."},
-    {"id": "ord-actually-tests", "pivot": false,
-     "prompt": "Actually, write the tests first, then the endpoint."}
+    {
+      "id": "piv-db-switch",
+      "pivot": true,
+      "decisions": [
+        "mongodb"
+      ],
+      "prompt": "Actually, let's switch from MongoDB to Postgres for the notes."
+    },
+    {
+      "id": "piv-provider-drop",
+      "pivot": true,
+      "decisions": [
+        "openai_sdk"
+      ],
+      "prompt": "Drop the OpenAI SDK, we're moving everything to Anthropic's API."
+    },
+    {
+      "id": "piv-model-upgrade",
+      "pivot": true,
+      "decisions": [
+        "gpt_oss_120b"
+      ],
+      "prompt": "What if we use gpt-4o for the action items instead? It's the best model."
+    },
+    {
+      "id": "piv-summarizer-model",
+      "pivot": true,
+      "decisions": [
+        "gemini_lite"
+      ],
+      "prompt": "Let's replace gemini-3.1-flash-lite in summarize.py with claude-sonnet-4-5."
+    },
+    {
+      "id": "piv-cache-removal",
+      "pivot": true,
+      "decisions": [
+        "redis"
+      ],
+      "prompt": "Get rid of Redis, we'll just cache in memory."
+    },
+    {
+      "id": "piv-goal-change",
+      "pivot": true,
+      "decisions": [],
+      "prompt": "Forget the 2-week MVP, we're building this as a full enterprise platform now."
+    },
+    {
+      "id": "piv-no-trigger-db",
+      "pivot": true,
+      "decisions": [
+        "mongodb"
+      ],
+      "prompt": "Use Postgres for storage from now on, not Mongo."
+    },
+    {
+      "id": "piv-no-trigger-provider",
+      "pivot": true,
+      "decisions": [
+        "gpt_oss_120b"
+      ],
+      "prompt": "We're going with Gemini 3.8 Flash for action items."
+    },
+    {
+      "id": "piv-self-host",
+      "pivot": true,
+      "decisions": [
+        "gpt_oss_120b"
+      ],
+      "prompt": "Let's move off Groq and self-host the model on our own GPU box."
+    },
+    {
+      "id": "ord-actually-bug",
+      "pivot": false,
+      "prompt": "Actually, the MongoDB insert is failing with a duplicate key error, can you look?"
+    },
+    {
+      "id": "ord-instead-404",
+      "pivot": false,
+      "prompt": "Return 404 instead of 500 when a note isn't found in the database."
+    },
+    {
+      "id": "ord-instead-dict",
+      "pivot": false,
+      "prompt": "In actions.py use a dict instead of a list for the parsed model output."
+    },
+    {
+      "id": "ord-replace-prints",
+      "pivot": false,
+      "prompt": "Replace the print statements in the OpenAI client wrapper with logging."
+    },
+    {
+      "id": "ord-drop-import",
+      "pivot": false,
+      "prompt": "Drop the unused redis import from reports.py."
+    },
+    {
+      "id": "ord-switch-env",
+      "pivot": false,
+      "prompt": "Switch to reading the MongoDB connection string from an env var instead of hardcoding it."
+    },
+    {
+      "id": "ord-actually-timeout",
+      "pivot": false,
+      "prompt": "Actually, set a 30 second timeout on the OpenAI client calls."
+    },
+    {
+      "id": "ord-rather-than",
+      "pivot": false,
+      "prompt": "Rather than one big summarize function, split it into prompt building and the API call."
+    },
+    {
+      "id": "ord-migrate-schema",
+      "pivot": false,
+      "prompt": "Migrate the notes collection to add a created_at field to every document."
+    },
+    {
+      "id": "ord-cache-key",
+      "pivot": false,
+      "prompt": "Actually, change the Redis cache key to include the user id."
+    },
+    {
+      "id": "ord-let-us-use-fixture",
+      "pivot": false,
+      "prompt": "Let's use a pytest fixture for the database connection instead of a global."
+    },
+    {
+      "id": "ord-explain-model",
+      "pivot": false,
+      "prompt": "Why did we go with gpt-oss-120b for action items again?"
+    },
+    {
+      "id": "ord-move-config",
+      "pivot": false,
+      "prompt": "Move the model name to a constant at the top of actions.py instead of inline."
+    },
+    {
+      "id": "ord-retry",
+      "pivot": false,
+      "prompt": "Instead of crashing when the API returns 429, retry with backoff."
+    },
+    {
+      "id": "ord-plain",
+      "pivot": false,
+      "prompt": "Add a /health endpoint that returns ok."
+    },
+    {
+      "id": "ord-actually-tests",
+      "pivot": false,
+      "prompt": "Actually, write the tests first, then the endpoint."
+    },
+    {
+      "id": "ho-piv-ditch-groq",
+      "pivot": true,
+      "decisions": [
+        "gpt_oss_120b"
+      ],
+      "prompt": "Honestly Groq has been flaky, let's ditch it and run the models through OpenRouter.",
+      "split": "heldout"
+    },
+    {
+      "id": "ho-piv-deadline",
+      "pivot": true,
+      "decisions": [],
+      "prompt": "Change of plans: the investor demo is next Tuesday, so we have 5 days instead of 2 weeks.",
+      "split": "heldout"
+    },
+    {
+      "id": "ho-ord-rename",
+      "pivot": false,
+      "prompt": "Actually, rename the redis helper to cache_client, it reads better.",
+      "split": "heldout"
+    }
   ]
 }

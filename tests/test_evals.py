@@ -17,22 +17,29 @@ def fake(monkeypatch, tmp_path):
     return client
 
 
+def scored(name):
+    res = evals.RUNNERS[name](Tracer())
+    evals.score(res, name)
+    return res
+
+
 def test_detection_section_scores_every_case():
-    res = evals.run_detection(Tracer())
+    res = scored("detection")
     m = res["metrics"]
-    assert m["cases"] == len(evals.load("detection")["cases"])
-    assert m["passed"] == sum(r["ok"] for r in res["cases"])
-    assert len(res["failures"]) == m["cases"] - m["passed"]
+    h = res["heldout_metrics"]
+    assert m["cases"] + h["cases"] == len(evals.load("detection")["cases"])
+    assert m["passed"] + h["passed"] == sum(r["ok"] for r in res["cases"])
+    assert len(res["failures"]) == m["cases"] + h["cases"] - m["passed"] - h["passed"]
     row = next(r for r in res["cases"] if r["case"] == "det-pnpm-orm-and-db")
     assert row["ok"] and sorted(row["flagged"]) == ["Drizzle", "PostgreSQL"]
     assert next(r for r in res["cases"] if r["case"] == "neg-read-file")["asked"] is False
 
 
 def test_pivot_section_counts_llm_calls_per_ordinary_prompt(fake):
-    res = evals.run_pivot(Tracer())
+    res = scored("pivot")
     m = res["metrics"]
-    assert m["llm_calls"] == fake.calls
-    ordinary = [r for r in res["cases"] if not r["expected_pivot"]]
+    assert m["llm_calls"] + res["heldout_metrics"]["llm_calls"] == fake.calls
+    ordinary = [r for r in res["cases"] if not r["expected_pivot"] and r["split"] == "original"]
     assert m["llm_calls_per_ordinary_prompt"] == round(
         sum(r["llm_calls"] for r in ordinary) / len(ordinary), 3)
     for r in res["cases"]:
@@ -40,13 +47,14 @@ def test_pivot_section_counts_llm_calls_per_ordinary_prompt(fake):
 
 
 def test_requirements_section_scores_each_decision(fake):
-    res = evals.run_requirements(Tracer())
+    res = scored("requirements")
     eu = next(r for r in res["cases"] if r["case"] == "req-eu-residency")
     # documented facts decide these, whatever the (fake) judge says
     assert eu["decisions"]["gpt_oss_120b"]["got"] == "stale"
     assert eu["decisions"]["mongodb"]["got"] == "needs_review"
-    total = sum(len(r["decisions"]) for r in res["cases"])
-    right = sum(d["ok"] for r in res["cases"] for d in r["decisions"].values())
+    original = [r for r in res["cases"] if r["split"] == "original"]
+    total = sum(len(r["decisions"]) for r in original)
+    right = sum(d["ok"] for r in original for d in r["decisions"].values())
     assert res["metrics"]["decisions_right"] == f"{right}/{total}"
 
 
@@ -85,3 +93,18 @@ def test_fit_is_final_with_a_finished_results_file(tmp_path):
                              "config": {"judge": "gemini:gemini-3.8-flash"}, "trace_id": "t1"}))
     st = evals.fit_status(tmp_path, did)
     assert st["status"] == "final" and st["verdict"] == "keep" and st["check_trace_id"] == "t1"
+
+
+def test_heldout_cases_are_scored_separately():
+    res = scored("detection")
+    held = [r["case"] for r in res["cases"] if r["split"] == "heldout"]
+    assert held and all(c.startswith("ho-") for c in held)
+    assert res["heldout_metrics"]["cases"] == len(held)
+    assert res["metrics"]["cases"] == len(res["cases"]) - len(held)
+
+
+def test_requirements_heldout_cases_use_their_own_project(fake):
+    res = scored("requirements")
+    uk = next(r for r in res["cases"] if r["case"] == "ho-req-uk")
+    assert set(uk["decisions"]) == {"supabase", "stripe", "anthropic_sdk", "gpt_oss_20b",
+                                    "claude_sonnet", "prisma"}

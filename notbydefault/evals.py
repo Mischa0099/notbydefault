@@ -134,6 +134,25 @@ def build_project(path: Path, spec: dict) -> dict[str, int]:
     return ids
 
 
+def split(case: dict) -> str:
+    """"original" cases were used while fixing; "heldout" ones were written afterwards."""
+    return case.get("split", "original")
+
+
+class Bases:
+    """One built base project per project file (eval/cases/<name>.json), copied per case."""
+
+    def __init__(self, root: Path):
+        self.root, self.built = root, {}
+
+    def get(self, name: str) -> tuple[Path, dict[str, int]]:
+        if name not in self.built:
+            base = self.root / f"base-{name}"
+            base.mkdir()
+            self.built[name] = (base, build_project(base, load(name)))
+        return self.built[name]
+
+
 def make_client(project: Path):
     from notbydefault.env import load_env
     from notbydefault.fit.providers import ProviderSet, load_catalog
@@ -159,8 +178,6 @@ def run_detection(tracer, out=print) -> dict:
     from notbydefault.hooks.pre_tool import handle
     cases = load("detection")["cases"]
     rows, failures = [], []
-    tp = fp = fn = 0
-    interruptions = false_interruptions = negatives = 0
     with tempfile.TemporaryDirectory(prefix="nbd-eval-det-") as tmp, \
             env(NOTBYDEFAULT_ENTIRE="0", NOTBYDEFAULT_TELEMETRY="0"):
         for case in cases:
@@ -188,13 +205,7 @@ def run_detection(tracer, out=print) -> dict:
                            if n > seen_before.get((did, label), 0)] if asked else []
                 expected = {e.lower() for e in case["expect"]}
                 got = {f.lower() for f in flagged}
-                c_tp, c_fp, c_fn = len(expected & got), len(got - expected), len(expected - got)
-                tp, fp, fn = tp + c_tp, fp + c_fp, fn + c_fn
-                interruptions += asked
-                if not expected:
-                    negatives += 1
-                    false_interruptions += asked
-                ok = (asked == bool(expected)) and not c_fp and not c_fn and not error
+                ok = (asked == bool(expected)) and expected == got and not error
                 reason = ""
                 if not ok:
                     if error:
@@ -206,43 +217,51 @@ def run_detection(tracer, out=print) -> dict:
                     else:
                         reason = (f"wrong decisions: expected {sorted(case['expect'])}, "
                                   f"flagged {sorted(flagged)}")
-                    failures.append({"case": case["id"], "reason": reason})
+                    failures.append({"case": case["id"], "split": split(case), "reason": reason})
                 tracer.event("case_pass" if ok else "case_fail", "verification",
                              reason or "as expected", case=case["id"], asked=asked,
                              flagged=flagged, expected=case["expect"])
-                rows.append({"case": case["id"], "ok": ok, "expected": case["expect"],
-                             "flagged": flagged, "asked": asked, "ms": round(ms, 1),
-                             **({"reason": reason} if reason else {})})
-    metrics = {"cases": len(cases), "passed": sum(r["ok"] for r in rows),
-               "precision": ratio(tp, tp + fp), "recall": ratio(tp, tp + fn),
-               "interruptions": interruptions, "false_interruptions": false_interruptions,
-               "false_interruption_rate": ratio(false_interruptions, negatives),
-               "negatives": negatives}
-    return {"metrics": metrics, "cases": rows, "failures": failures}
+                rows.append({"case": case["id"], "split": split(case), "ok": ok,
+                             "expected": case["expect"], "flagged": flagged, "asked": asked,
+                             "ms": round(ms, 1), **({"reason": reason} if reason else {})})
+    return {"cases": rows, "failures": failures}
+
+
+def detection_metrics(rows: list[dict]) -> dict:
+    tp = fp = fn = interruptions = false_interruptions = negatives = 0
+    for r in rows:
+        expected = {e.lower() for e in r["expected"]}
+        got = {f.lower() for f in r["flagged"]}
+        tp, fp, fn = tp + len(expected & got), fp + len(got - expected), fn + len(expected - got)
+        interruptions += r["asked"]
+        if not expected:
+            negatives += 1
+            false_interruptions += r["asked"]
+    return {"cases": len(rows), "passed": sum(r["ok"] for r in rows),
+            "precision": ratio(tp, tp + fp), "recall": ratio(tp, tp + fn),
+            "interruptions": interruptions, "false_interruptions": false_interruptions,
+            "false_interruption_rate": ratio(false_interruptions, negatives),
+            "negatives": negatives}
 
 
 # --- pivot -------------------------------------------------------------------------------
 
 def run_pivot(tracer, out=print) -> dict:
     from notbydefault.hooks.user_prompt import handle
-    spec, cases = load("project"), load("pivot")["cases"]
+    cases = load("pivot")["cases"]
     rows, failures = [], []
-    tp = fp = fn = tn = 0
-    ordinary_calls = ordinary = prefilter_hits = 0
-    mapped_ok = mapped_n = 0
     with tempfile.TemporaryDirectory(prefix="nbd-eval-piv-") as tmp, \
             env(NOTBYDEFAULT_ENTIRE="0", NOTBYDEFAULT_TELEMETRY="0"):
-        base = Path(tmp) / "base"
-        base.mkdir()
-        keys = build_project(base, spec)
-        by_id = {v: k for k, v in keys.items()}
-        client = make_client(base)
+        bases = Bases(Path(tmp))
+        client = make_client(Path(tmp))
         for case in cases:
+            base, keys = bases.get(case.get("project", "project"))
+            by_id = {v: k for k, v in keys.items()}
             project = Path(tmp) / case["id"]
             shutil.copytree(base, project)
             with tracer.step(f"case:{case['id']}", "verification",
                              reason=("real pivot" if case["pivot"] else "ordinary prompt")):
-                before = client.calls
+                before, cached_before = client.calls, client.cached
                 error = ""
                 started = time.perf_counter()
                 try:
@@ -251,14 +270,14 @@ def run_pivot(tracer, out=print) -> dict:
                 except Exception as e:
                     output, info, error = None, {"stage": "error"}, repr(e)
                 ms = (time.perf_counter() - started) * 1000
-                calls = client.calls - before
+                calls, cached = client.calls - before, client.cached - cached_before
                 said_pivot = info.get("stage") == "confirmed"
                 cache = project / ".notbydefault" / "cache" / "openrouter-models.json"
                 if cache.exists() and not (base / ".notbydefault" / "cache" / cache.name).exists():
                     (base / ".notbydefault" / "cache").mkdir(parents=True, exist_ok=True)
                     shutil.copy2(cache, base / ".notbydefault" / "cache" / cache.name)
                 mapped = sorted(by_id.get(i, str(i)) for i in info.get("decisions", []))
-                reason = ""
+                reason, mapping_ok = "", None
                 if error:
                     reason = f"hook error: {error}"
                 elif case["pivot"] and not said_pivot:
@@ -267,67 +286,68 @@ def run_pivot(tracer, out=print) -> dict:
                     reason = (("missed pivot: the pre-filter found no change-of-direction phrase"
                                if not phrase else
                                f"missed pivot: the pre-filter matched \"{phrase.group(0)}\" but "
-                               "found no stack word or decision name, so it skipped the LLM")
+                               "found no stack word, decision name or recorded goal, so it "
+                               "skipped the LLM")
                               if info.get("stage") == "prefilter"
                               else f"missed pivot: the model said it is not a pivot")
                 elif not case["pivot"] and said_pivot:
                     reason = f"false pivot: the model read it as \"{info.get('change')}\""
                 elif case["pivot"] and said_pivot:
                     missing = sorted(set(case["decisions"]) - set(mapped))
-                    mapped_n += 1
+                    mapping_ok = not missing
                     if missing:
                         reason = f"pivot found but not mapped to {missing} (mapped to {mapped})"
-                    else:
-                        mapped_ok += 1
-                if case["pivot"]:
-                    tp += said_pivot
-                    fn += not said_pivot
-                else:
-                    fp += said_pivot
-                    tn += not said_pivot
-                    ordinary += 1
-                    ordinary_calls += calls
-                    prefilter_hits += info.get("stage") != "prefilter"
                 ok = not reason
                 if not ok:
-                    failures.append({"case": case["id"], "reason": reason,
+                    failures.append({"case": case["id"], "split": split(case), "reason": reason,
                                      "prompt": case["prompt"]})
                 tracer.event("case_pass" if ok else "case_fail", "verification",
                              reason or "as expected", case=case["id"], llm_calls=calls,
                              stage=info.get("stage"))
-                rows.append({"case": case["id"], "ok": ok, "expected_pivot": case["pivot"],
-                             "said_pivot": said_pivot, "stage": info.get("stage"),
-                             "phrases": info.get("phrases"), "change": info.get("change"),
-                             "mapped": mapped, "llm_calls": calls, "ms": round(ms, 1),
+                rows.append({"case": case["id"], "split": split(case), "ok": ok,
+                             "expected_pivot": case["pivot"], "said_pivot": said_pivot,
+                             "stage": info.get("stage"), "phrases": info.get("phrases"),
+                             "change": info.get("change"), "mapped": mapped,
+                             "mapping_ok": mapping_ok, "llm_calls": calls,
+                             "llm_calls_cached": cached, "ms": round(ms, 1),
                              **({"reason": reason} if reason else {})})
-    metrics = {"cases": len(cases), "passed": sum(r["ok"] for r in rows),
-               "precision": ratio(tp, tp + fp), "recall": ratio(tp, tp + fn),
-               "false_pivots": fp, "missed_pivots": fn,
-               "llm_calls_per_ordinary_prompt": ratio(ordinary_calls, ordinary),
-               "ordinary_prompts_reaching_llm": f"{prefilter_hits}/{ordinary}",
-               "mapping_accuracy": ratio(mapped_ok, mapped_n),
-               "llm_calls": client.calls, "llm_calls_cached": client.cached}
-    return {"metrics": metrics, "cases": rows, "failures": failures}
+    return {"cases": rows, "failures": failures}
+
+
+def pivot_metrics(rows: list[dict]) -> dict:
+    piv = [r for r in rows if r["expected_pivot"]]
+    ordinary = [r for r in rows if not r["expected_pivot"]]
+    tp = sum(r["said_pivot"] for r in piv)
+    fp = sum(r["said_pivot"] for r in ordinary)
+    mapped = [r["mapping_ok"] for r in piv if r["mapping_ok"] is not None]
+    return {"cases": len(rows), "passed": sum(r["ok"] for r in rows),
+            "precision": ratio(tp, tp + fp), "recall": ratio(tp, len(piv)),
+            "false_pivots": fp, "missed_pivots": len(piv) - tp,
+            "llm_calls_per_ordinary_prompt": ratio(sum(r["llm_calls"] for r in ordinary),
+                                                   len(ordinary)),
+            "ordinary_prompts_reaching_llm":
+                f"{sum(r['stage'] != 'prefilter' for r in ordinary)}/{len(ordinary)}",
+            "mapping_accuracy": ratio(sum(mapped), len(mapped)),
+            "llm_calls": sum(r["llm_calls"] for r in rows),
+            "llm_calls_cached": sum(r["llm_calls_cached"] for r in rows)}
 
 
 # --- requirements ------------------------------------------------------------------------
 
 def run_requirements(tracer, out=print) -> dict:
     from notbydefault.stale import require
-    spec, cases = load("project"), load("requirements")["cases"]
+    cases = load("requirements")["cases"]
     rows, failures = [], []
-    correct = total = false_stale = missed_stale = 0
     with tempfile.TemporaryDirectory(prefix="nbd-eval-req-") as tmp, \
             env(NOTBYDEFAULT_ENTIRE="0", NOTBYDEFAULT_TELEMETRY="0"):
-        base = Path(tmp) / "base"
-        base.mkdir()
-        keys = build_project(base, spec)
-        client = make_client(base)
+        bases = Bases(Path(tmp))
+        client = make_client(Path(tmp))
         for case in cases:
+            base, keys = bases.get(case.get("project", "project"))
             project = Path(tmp) / case["id"]
             shutil.copytree(base, project)
             with tracer.step(f"case:{case['id']}", "verification", reason=case["requirement"]):
-                before = client.calls
+                before, cached_before = client.calls, client.cached
                 lines: list[str] = []
                 error = ""
                 try:
@@ -335,7 +355,7 @@ def run_requirements(tracer, out=print) -> dict:
                             out=lines.append)
                 except Exception as e:
                     error = repr(e)
-                calls = client.calls - before
+                calls, cached = client.calls - before, client.cached - cached_before
                 judged, constraints = {}, {}
                 with Graph.for_project(project) as g:
                     reqs = [n for n in g.nodes("requirement") if n["data"].get("source") == "require"]
@@ -348,15 +368,12 @@ def run_requirements(tracer, out=print) -> dict:
                     got = (judged.get(str(keys[key])) or {})
                     status = got.get("status") or ("error" if error else "missing")
                     ok = status in allowed
-                    total += 1
-                    correct += ok
-                    false_stale += status == "stale" and "stale" not in allowed
-                    missed_stale += allowed == ["stale"] and status != "stale"
                     per[key] = {"expected": allowed, "got": status, "ok": ok,
-                                "reason": got.get("reason", ""), "basis": got.get("basis", "")}
+                                "reason": got.get("reason", ""), "basis": got.get("basis", ""),
+                                "property": got.get("property", "")}
                     if not ok:
                         failures.append({
-                            "case": case["id"], "decision": key,
+                            "case": case["id"], "split": split(case), "decision": key,
                             "reason": f"expected {'/'.join(allowed)}, got {status}"
                                       + (f" ({got.get('basis')})" if got.get("basis") else "")
                                       + (f": {got.get('reason')}" if got.get("reason") else "")
@@ -365,14 +382,22 @@ def run_requirements(tracer, out=print) -> dict:
                 tracer.event("case_pass" if ok_case else "case_fail", "verification",
                              f"{sum(p['ok'] for p in per.values())}/{len(per)} decisions right",
                              case=case["id"], llm_calls=calls, constraints=constraints)
-                rows.append({"case": case["id"], "ok": ok_case, "requirement": case["requirement"],
-                             "constraints": constraints, "decisions": per, "llm_calls": calls,
+                rows.append({"case": case["id"], "split": split(case), "ok": ok_case,
+                             "requirement": case["requirement"], "constraints": constraints,
+                             "decisions": per, "llm_calls": calls, "llm_calls_cached": cached,
                              **({"error": error} if error else {})})
-    metrics = {"cases": len(cases), "passed": sum(r["ok"] for r in rows),
-               "accuracy": ratio(correct, total), "decisions_right": f"{correct}/{total}",
-               "false_stale": false_stale, "missed_stale": missed_stale,
-               "llm_calls": client.calls, "llm_calls_cached": client.cached}
-    return {"metrics": metrics, "cases": rows, "failures": failures}
+    return {"cases": rows, "failures": failures}
+
+
+def requirements_metrics(rows: list[dict]) -> dict:
+    per = [d for r in rows for d in r["decisions"].values()]
+    correct = sum(d["ok"] for d in per)
+    return {"cases": len(rows), "passed": sum(r["ok"] for r in rows),
+            "accuracy": ratio(correct, len(per)), "decisions_right": f"{correct}/{len(per)}",
+            "false_stale": sum(d["got"] == "stale" and "stale" not in d["expected"] for d in per),
+            "missed_stale": sum(d["expected"] == ["stale"] and d["got"] != "stale" for d in per),
+            "llm_calls": sum(r["llm_calls"] for r in rows),
+            "llm_calls_cached": sum(r["llm_calls_cached"] for r in rows)}
 
 
 # --- model fit ---------------------------------------------------------------------------
@@ -435,56 +460,119 @@ def run_fit(tracer, out=print) -> dict:
         with tracer.step(f"case:{case['id']}", "verification",
                          reason="read the saved fit-check verdict (no model calls)"):
             st = fit_status(project, case["decision_id"])
-            row = {"case": case["id"], "decision_id": case["decision_id"], **st}
+            row = {"case": case["id"], "split": split(case), "decision_id": case["decision_id"], **st}
+            expect = case.get("expect") or {}
+            wrong = {k: st.get(k) for k, v in expect.items() if st.get(k) != v}
+            row["ok"] = st["status"] == "final" and not wrong
             if st["status"] == "pending":
                 row["needs"] = case.get("needs")
                 row["resume"] = case.get("resume")
-                failures.append({"case": case["id"], "pending": True,
+                failures.append({"case": case["id"], "split": split(case), "pending": True,
                                  "reason": f"pending: {st['reason']}. Needs {case.get('needs')}. "
                                            f"Then run `{case.get('resume')}` and "
                                            "`notbydefault eval --sections fit`."})
+            elif wrong:
+                failures.append({"case": case["id"], "split": split(case),
+                                 "reason": f"expected {expect}, got {wrong}"})
             tracer.event("fit_" + st["status"], "verification",
                          st.get("summary") or st.get("reason", ""), case=case["id"])
             rows.append(row)
-    metrics = {"cases": len(rows), "final": sum(r["status"] == "final" for r in rows),
-               "pending": sum(r["status"] == "pending" for r in rows)}
-    return {"metrics": metrics, "cases": rows, "failures": failures}
+    return {"cases": rows, "failures": failures}
+
+
+def fit_metrics(rows: list[dict]) -> dict:
+    return {"cases": len(rows), "passed": sum(r["ok"] for r in rows),
+            "final": sum(r["status"] == "final" for r in rows),
+            "pending": sum(r["status"] == "pending" for r in rows)}
 
 
 RUNNERS = {"detection": run_detection, "pivot": run_pivot,
            "requirements": run_requirements, "fit": run_fit}
+METRIC_FNS = {"detection": detection_metrics, "pivot": pivot_metrics,
+              "requirements": requirements_metrics, "fit": fit_metrics}
+
+
+def score(section: dict, name: str) -> None:
+    """metrics on the original cases (comparable across versions) and on the held-out ones."""
+    rows = section["cases"]
+    section["metrics"] = METRIC_FNS[name]([r for r in rows if r.get("split", "original") == "original"])
+    held = [r for r in rows if r.get("split") == "heldout"]
+    section["heldout_metrics"] = METRIC_FNS[name](held) if held else None
 
 
 # --- report ------------------------------------------------------------------------------
 
+METRICS = {
+    "detection": ["cases", "passed", "precision", "recall", "interruptions",
+                  "false_interruptions", "false_interruption_rate"],
+    "pivot": ["cases", "passed", "precision", "recall", "false_pivots", "missed_pivots",
+              "llm_calls_per_ordinary_prompt", "ordinary_prompts_reaching_llm",
+              "mapping_accuracy", "llm_calls"],
+    "requirements": ["cases", "passed", "accuracy", "decisions_right", "false_stale",
+                     "missed_stale", "llm_calls"],
+    "fit": ["cases", "passed", "final", "pending"],
+}
+
+
+def _fmt(v) -> str:
+    return "-" if v is None else str(v)
+
+
+def _grid(rows: list[tuple]) -> list[str]:
+    w = [max(len(r[i]) for r in rows) for i in range(len(rows[0]) - 1)]
+    lines = ["  ".join(f"{c:<{w[i]}}" for i, c in enumerate(r[:-1])) + "  " + r[-1] for r in rows]
+    lines.insert(1, "-" * min(130, max(len(l) for l in lines)))
+    return lines
+
+
 def table(results: dict) -> list[str]:
     s = results["sections"]
-    rows = [("section", "metric", "value")]
-
-    def add(sec, keys):
+    rows = [("section", "metric", "original", "held-out")]
+    for sec, keys in METRICS.items():
         if sec not in s:
-            return
-        m = s[sec]["metrics"]
+            continue
+        m, h = s[sec]["metrics"], s[sec].get("heldout_metrics") or {}
         for k in keys:
-            rows.append((sec, k, "-" if m.get(k) is None else str(m.get(k))))
-        rows.append((sec, "trace id", s[sec].get("trace_id") or "-"))
-    add("detection", ["cases", "passed", "precision", "recall", "interruptions",
-                      "false_interruptions", "false_interruption_rate"])
-    add("pivot", ["cases", "passed", "precision", "recall", "false_pivots", "missed_pivots",
-                  "llm_calls_per_ordinary_prompt", "ordinary_prompts_reaching_llm",
-                  "mapping_accuracy"])
-    add("requirements", ["cases", "passed", "accuracy", "decisions_right", "false_stale",
-                         "missed_stale", "llm_calls"])
-    if "fit" in s:
-        for r in s["fit"]["cases"]:
-            val = (f"{r['verdict']}: {r['summary']}" if r["status"] == "final"
-                   else f"PENDING (provisional: {r.get('provisional_verdict') or '-'})")
-            rows.append(("fit", f"decision #{r['decision_id']}", val[:110]))
-        rows.append(("fit", "trace id", s["fit"].get("trace_id") or "-"))
-    w = [max(len(r[i]) for r in rows) for i in range(2)]
-    lines = [f"{a:<{w[0]}}  {b:<{w[1]}}  {c}" for a, b, c in rows]
-    lines.insert(1, "-" * min(120, max(len(l) for l in lines)))
+            rows.append((sec, k.replace("_", " "), _fmt(m.get(k)), _fmt(h.get(k))))
+        if sec == "fit":
+            for r in s["fit"]["cases"]:
+                val = (f"{r['verdict']}: {r['summary']}" if r["status"] == "final"
+                       else f"PENDING (provisional: {r.get('provisional_verdict') or '-'})")
+                rows.append(("fit", f"decision #{r['decision_id']} ({r.get('split', 'original')})",
+                             val[:100], ""))
+        rows.append((sec, "trace id", s[sec].get("trace_id") or "-", ""))
+    return _grid(rows)
+
+
+def failure_lines(results: dict) -> list[str]:
+    fails = [(name, f) for name in SECTIONS if name in results["sections"]
+             for f in results["sections"][name]["failures"]]
+    lines = [f"Failures ({len(fails)}):"]
+    for name, f in fails:
+        where = f["case"] + (f" / {f['decision']}" if f.get("decision") else "")
+        tag = " (held-out)" if f.get("split") == "heldout" else ""
+        lines.append(f"  [{name}]{tag} {where}: {f['reason']}")
     return lines
+
+
+def compare(old: str, new: str, out=print) -> int:
+    """Before/after table of every metric and trace id: OLD and NEW on the original cases,
+    plus NEW on the held-out cases (written after the fixes, never used to tune them)."""
+    a, b = (json.loads((EVAL_DIR / "results" / f"{v}.json").read_text(encoding="utf-8"))
+            for v in (old, new))
+    rows = [("section", "metric", old, new, f"{new} held-out")]
+    for sec, keys in METRICS.items():
+        sa, sb = a["sections"].get(sec, {}), b["sections"].get(sec, {})
+        for k in keys:
+            rows.append((sec, k.replace("_", " "), _fmt(sa.get("metrics", {}).get(k)),
+                         _fmt(sb.get("metrics", {}).get(k)),
+                         _fmt((sb.get("heldout_metrics") or {}).get(k))))
+        rows.append((sec, "trace id", sa.get("trace_id") or "-", sb.get("trace_id") or "-",
+                     "(same trace)"))
+    out("\n".join(_grid(rows)))
+    out("")
+    out("\n".join(failure_lines(b)).replace("Failures", f"Remaining failures in {new}", 1))
+    return 0
 
 
 def git_commit() -> str:
@@ -513,12 +601,18 @@ def run(version: str = "v1", sections: list[str] | None = None, out_path: Path |
                                                        "notbydefault.eval_section": name}):
             trace_id = tracer.trace_id
             section = RUNNERS[name](tracer, out)
+            score(section, name)
             tracer.annotate({f"notbydefault.eval.{k}": v for k, v in section["metrics"].items()})
+            if section["heldout_metrics"]:
+                tracer.annotate({f"notbydefault.eval.heldout.{k}": v
+                                 for k, v in section["heldout_metrics"].items()})
         section["trace_id"] = trace_id
         section["seconds"] = round(time.perf_counter() - started, 1)
         results["sections"][name] = section
-        out(f"  {name}: {section['metrics'].get('passed', section['metrics'].get('final'))}/"
-            f"{section['metrics']['cases']} in {section['seconds']}s")
+        h = section["heldout_metrics"]
+        out(f"  {name}: {section['metrics']['passed']}/{section['metrics']['cases']}"
+            + (f" (held-out {h['passed']}/{h['cases']})" if h else "")
+            + f" in {section['seconds']}s")
         out_path.parent.mkdir(parents=True, exist_ok=True)   # save after every section
         out_path.write_text(json.dumps(results, indent=2, default=str) + "\n", encoding="utf-8")
     tracer.flush()
@@ -526,11 +620,6 @@ def run(version: str = "v1", sections: list[str] | None = None, out_path: Path |
     out("")
     out("\n".join(table(results)))
     out("")
-    fails = [(name, f) for name in SECTIONS if name in results["sections"]
-             for f in results["sections"][name]["failures"]]
-    out(f"Failures ({len(fails)}):")
-    for name, f in fails:
-        where = f["case"] + (f" / {f['decision']}" if f.get("decision") else "")
-        out(f"  [{name}] {where}: {f['reason']}")
+    out("\n".join(failure_lines(results)))
     out(f"\nSaved {out_path.relative_to(REPO_ROOT).as_posix() if out_path.is_relative_to(REPO_ROOT) else out_path}")
     return 0

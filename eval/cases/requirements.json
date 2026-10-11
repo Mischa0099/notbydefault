@@ -1,65 +1,167 @@
 {
   "_comment": "`notbydefault require` cases against eval/cases/project.json (600,000 model calls/month, $500/month budget). Per decision key, the acceptable statuses: stale (a documented fact or a computable price x recorded volume breaks the requirement), needs_review (may conflict, depends on deployment or judgement), valid (unaffected). A list means either answer is acceptable. Cost math at list price with 1000 input + 300 output tokens per call: gpt-oss-120b $198/month, gemini-3.1-flash-lite $420/month.",
   "cases": [
-    {"id": "req-eu-residency",
-     "requirement": "All user data must stay in the EU (GDPR data residency).",
-     "expect": {
-       "mongodb": "needs_review",
-       "redis": "needs_review",
-       "openai_sdk": "needs_review",
-       "gpt_oss_120b": "stale",
-       "gemini_lite": "stale",
-       "sqlalchemy": "valid"},
-     "notes": "Groq documents US-only storage; Gemini API guarantees no region. MongoDB/Redis depend on where they are deployed. SQLAlchemy is a library that stores nothing."},
-    {"id": "req-us-residency",
-     "requirement": "Customer data must stay in the United States.",
-     "expect": {
-       "mongodb": "needs_review",
-       "redis": "needs_review",
-       "openai_sdk": ["needs_review", "valid"],
-       "gpt_oss_120b": "valid",
-       "gemini_lite": "stale",
-       "sqlalchemy": "valid"},
-     "notes": "Groq documents US storage, so the Groq model stays valid; Gemini guarantees no region."},
-    {"id": "req-hipaa",
-     "requirement": "We will store patient health records, so the whole system must be HIPAA compliant.",
-     "expect": {
-       "mongodb": "needs_review",
-       "redis": ["needs_review", "valid"],
-       "openai_sdk": "needs_review",
-       "gpt_oss_120b": "needs_review",
-       "gemini_lite": "needs_review",
-       "sqlalchemy": "valid"},
-     "notes": "Nothing in the catalog documents BAAs either way, so nothing may be marked stale; the services that receive PHI need review."},
-    {"id": "req-budget-cut",
-     "requirement": "The monthly infrastructure budget is cut to $50.",
-     "expect": {
-       "mongodb": ["needs_review", "valid"],
-       "redis": ["needs_review", "valid"],
-       "openai_sdk": ["needs_review", "valid"],
-       "gpt_oss_120b": "stale",
-       "gemini_lite": "stale",
-       "sqlalchemy": "valid"},
-     "notes": "At list price and the recorded volume the models cost $198 and $420 per month, both over $50: computable, so stale."},
-    {"id": "req-10x-users",
-     "requirement": "Plan for 10x the users: 200,000 users at launch.",
-     "expect": {
-       "mongodb": ["needs_review", "valid"],
-       "redis": ["needs_review", "valid"],
-       "openai_sdk": ["needs_review", "valid"],
-       "gpt_oss_120b": "stale",
-       "gemini_lite": "stale",
-       "sqlalchemy": "valid"},
-     "notes": "10x volume: about $1,980 and $4,200 per month against the recorded $500 budget: computable, so stale."},
-    {"id": "req-unrelated",
-     "requirement": "All API responses must be JSON with snake_case keys.",
-     "expect": {
-       "mongodb": "valid",
-       "redis": "valid",
-       "openai_sdk": "valid",
-       "gpt_oss_120b": "valid",
-       "gemini_lite": "valid",
-       "sqlalchemy": "valid"},
-     "notes": "Control: nothing is affected."}
+    {
+      "id": "req-eu-residency",
+      "requirement": "All user data must stay in the EU (GDPR data residency).",
+      "expect": {
+        "mongodb": "needs_review",
+        "redis": "needs_review",
+        "openai_sdk": "needs_review",
+        "gpt_oss_120b": "stale",
+        "gemini_lite": "stale",
+        "sqlalchemy": "valid"
+      },
+      "notes": "Groq documents US-only storage; Gemini API guarantees no region. MongoDB/Redis depend on where they are deployed. SQLAlchemy is a library that stores nothing."
+    },
+    {
+      "id": "req-us-residency",
+      "requirement": "Customer data must stay in the United States.",
+      "expect": {
+        "mongodb": "needs_review",
+        "redis": "needs_review",
+        "openai_sdk": [
+          "needs_review",
+          "valid"
+        ],
+        "gpt_oss_120b": "valid",
+        "gemini_lite": "stale",
+        "sqlalchemy": "valid"
+      },
+      "notes": "Groq documents US storage, so the Groq model stays valid; Gemini guarantees no region."
+    },
+    {
+      "id": "req-hipaa",
+      "requirement": "We will store patient health records, so the whole system must be HIPAA compliant.",
+      "expect": {
+        "mongodb": "needs_review",
+        "redis": [
+          "needs_review",
+          "valid"
+        ],
+        "openai_sdk": "needs_review",
+        "gpt_oss_120b": "needs_review",
+        "gemini_lite": "needs_review",
+        "sqlalchemy": "valid"
+      },
+      "notes": "Nothing in the catalog documents BAAs either way, so nothing may be marked stale; the services that receive PHI need review."
+    },
+    {
+      "id": "req-budget-cut",
+      "requirement": "The monthly infrastructure budget is cut to $50.",
+      "expect": {
+        "mongodb": [
+          "needs_review",
+          "valid"
+        ],
+        "redis": [
+          "needs_review",
+          "valid"
+        ],
+        "openai_sdk": [
+          "needs_review",
+          "valid"
+        ],
+        "gpt_oss_120b": "stale",
+        "gemini_lite": "stale",
+        "sqlalchemy": "valid"
+      },
+      "notes": "At list price and the recorded volume the models cost $198 and $420 per month, both over $50: computable, so stale."
+    },
+    {
+      "id": "req-10x-users",
+      "requirement": "Plan for 10x the users: 200,000 users at launch.",
+      "expect": {
+        "mongodb": [
+          "needs_review",
+          "valid"
+        ],
+        "redis": [
+          "needs_review",
+          "valid"
+        ],
+        "openai_sdk": [
+          "needs_review",
+          "valid"
+        ],
+        "gpt_oss_120b": "stale",
+        "gemini_lite": "stale",
+        "sqlalchemy": "valid"
+      },
+      "notes": "10x volume: about $1,980 and $4,200 per month against the recorded $500 budget: computable, so stale."
+    },
+    {
+      "id": "req-unrelated",
+      "requirement": "All API responses must be JSON with snake_case keys.",
+      "expect": {
+        "mongodb": "valid",
+        "redis": "valid",
+        "openai_sdk": "valid",
+        "gpt_oss_120b": "valid",
+        "gemini_lite": "valid",
+        "sqlalchemy": "valid"
+      },
+      "notes": "Control: nothing is affected."
+    },
+    {
+      "id": "ho-req-uk",
+      "project": "project_heldout",
+      "requirement": "Invoices and customer data must not leave the United Kingdom.",
+      "expect": {
+        "supabase": "needs_review",
+        "stripe": "needs_review",
+        "anthropic_sdk": "needs_review",
+        "gpt_oss_20b": "stale",
+        "claude_sonnet": [
+          "needs_review",
+          "stale"
+        ],
+        "prisma": "valid"
+      },
+      "notes": "Groq documents US-only storage; Supabase's region is chosen per project; nothing documented for Stripe/Anthropic.",
+      "split": "heldout"
+    },
+    {
+      "id": "ho-req-spend-cap",
+      "project": "project_heldout",
+      "requirement": "Total infrastructure spend is capped at $5 a month.",
+      "expect": {
+        "supabase": [
+          "needs_review",
+          "valid"
+        ],
+        "stripe": [
+          "needs_review",
+          "valid"
+        ],
+        "anthropic_sdk": [
+          "needs_review",
+          "valid"
+        ],
+        "gpt_oss_20b": "stale",
+        "claude_sonnet": [
+          "stale",
+          "needs_review"
+        ],
+        "prisma": "valid"
+      },
+      "notes": "gpt-oss-20b at list price is about $8.25/month at the recorded volume, over $5. Claude Sonnet is far over too, but its price is not in the catalog.",
+      "split": "heldout"
+    },
+    {
+      "id": "ho-req-control",
+      "project": "project_heldout",
+      "requirement": "Every request must be logged with a correlation id.",
+      "expect": {
+        "supabase": "valid",
+        "stripe": "valid",
+        "anthropic_sdk": "valid",
+        "gpt_oss_20b": "valid",
+        "claude_sonnet": "valid",
+        "prisma": "valid"
+      },
+      "notes": "Control: nothing is affected.",
+      "split": "heldout"
+    }
   ]
 }

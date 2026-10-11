@@ -38,7 +38,9 @@ def test_hook_asks_and_records_decision(tmp_path):
         "NotByDefault: this picks MongoDB as your service (database).")
     with Graph.for_project(tmp_path) as g:
         decision_id = g.list_decisions()[0]["id"]
-    assert (f"Run `{sys.executable} -m notbydefault check {decision_id} "
+    # a path with spaces is quoted, with PowerShell's call operator so it still runs
+    exe = f'& "{sys.executable}"' if " " in sys.executable else sys.executable
+    assert (f"Run `{exe} -m notbydefault check {decision_id} "
             f"--project {tmp_path.resolve()}` to test the fit.") in out["permissionDecisionReason"]
 
     with Graph.for_project(tmp_path) as g:
@@ -135,3 +137,50 @@ def test_merge_settings_on_empty():
     s = merge_settings({}, Path("C:/x"))
     assert list(s["hooks"]) == ["PreToolUse", "UserPromptSubmit"]
     assert "matcher" not in s["hooks"]["UserPromptSubmit"][0]   # no matcher support
+
+
+# --- already decided in this project (D3/D4) ----------------------------------------------
+
+def test_reviewed_decision_does_not_interrupt_again(tmp_path):
+    with Graph.for_project(tmp_path) as g:
+        did = g.add_node("decision", "OpenAI", {"kind": "service", "category": "ai-provider",
+                                                "status": "reviewed", "times_seen": 1})
+    proc, _ = run_hook(tmp_path, event("Bash", {"command": "pip install --upgrade openai"}, tmp_path))
+    assert proc.returncode == 0 and proc.stdout == b""
+    with Graph.for_project(tmp_path) as g:
+        assert g.get_node(did)["data"]["times_seen"] == 2     # counted as seen
+        assert len(g.list_decisions()) == 1
+
+
+def test_unreviewed_decision_still_asks(tmp_path):
+    with Graph.for_project(tmp_path) as g:
+        g.add_node("decision", "OpenAI", {"kind": "service", "category": "ai-provider",
+                                          "status": "unreviewed", "times_seen": 1})
+    proc, _ = run_hook(tmp_path, event("Bash", {"command": "pip install openai"}, tmp_path))
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def test_model_already_used_elsewhere_does_not_interrupt(tmp_path):
+    (tmp_path / "app.py").write_text('MODEL = "gpt-4o"\n')
+    test_file = tmp_path / "tests" / "test_app.py"
+    proc, _ = run_hook(tmp_path, event("Write", {"file_path": str(test_file),
+                                                 "content": 'assert MODEL == "gpt-4o"\n'}, tmp_path))
+    assert proc.stdout == b""
+    # a different model is still a new choice
+    proc, _ = run_hook(tmp_path, event("Write", {"file_path": str(test_file),
+                                                 "content": 'M = "gpt-4o-mini"\n'}, tmp_path))
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+def test_service_already_in_a_manifest_does_not_interrupt(tmp_path):
+    (tmp_path / "requirements.txt").write_text("pymongo>=4\n")
+    proc, _ = run_hook(tmp_path, event("Bash", {"command": "pip install pymongo"}, tmp_path))
+    assert proc.stdout == b""
+
+
+def test_the_file_being_written_does_not_count_as_elsewhere(tmp_path):
+    f = tmp_path / "app.py"
+    f.write_text('MODEL = "gpt-4o"\n')
+    proc, _ = run_hook(tmp_path, event("Edit", {"file_path": str(f), "old_string": '"gpt-4o"',
+                                                "new_string": '"gpt-4.1"'}, tmp_path))
+    assert json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"] == "ask"

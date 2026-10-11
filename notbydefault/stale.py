@@ -3,7 +3,8 @@
 Adds a requirement node, turns it into machine-checkable constraints, and sorts every existing
 decision into one of three lists:
   stale         it provably conflicts: a documented fact breaks the requirement (e.g. the
-                provider documents that data stays in the US and EU residency is required)
+                provider documents that data stays in the US and EU residency is required), or
+                list price x recorded volume exceeds the budget (a budget cut, more users)
   needs review  it might conflict, but that depends on how it is deployed (self-hosted MongoDB
                 can run in the EU), or only the model's judgement says so (nothing documented)
   still valid   neither
@@ -12,6 +13,7 @@ Each affected decision gets the reason, its basis and source, and an edge to the
 from __future__ import annotations
 
 import json
+import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,10 +25,70 @@ EXTRACT_SYSTEM = ("You turn a product requirement into machine-checkable constra
                   "Answer with one JSON object only.")
 EXTRACT_PROMPT = """Requirement: {text}
 
-Return JSON with these keys (null when the requirement says nothing about it):
-{{"data_residency": "<region code the data must stay in, e.g. EU, US, UK, or null>",
-  "max_monthly_cost_usd": <number or null>,
+Return JSON with these keys. Use null unless the requirement itself states the value; never infer
+one (a compliance regime such as HIPAA, SOC 2 or PCI DSS names no region and no budget):
+{{"data_residency": "<region code the requirement says the data must stay in, e.g. EU, US, UK, or null>",
+  "max_monthly_cost_usd": <the monthly budget in USD the requirement states, or null>,
+  "expected_users": <the number of users the requirement states, or null>,
   "summary": "<the requirement in at most 12 words>"}}"""
+
+# A constraint is kept only when the requirement's own words state it (the model may not infer).
+REGION_CODES = {"EU": ("EU", "EEA"), "US": ("US", "USA", "U.S.", "U.S.A."), "UK": ("UK",)}
+REGION_WORDS = {"EU": r"europe(?:an)?(?: union)?", "US": r"united states|america",
+                "UK": r"united kingdom|britain|british"}
+LOCATION_WORDS = re.compile(r"\b(stay|stays|stored?|stor(?:age|ing)|resid(?:e|es|ency|ent)|located|"
+                            r"locat(?:ion|ed)|kept|keep|hosted|host|remain|within|sovereign(?:ty)?|"
+                            r"region|leave|inside)\b", re.IGNORECASE)
+NUMBER = re.compile(r"(\d[\d,]*(?:\.\d+)?)\s*([kKmM]\b)?")
+MULTIPLIER = re.compile(r"\b(\d+(?:\.\d+)?)\s*x\b", re.IGNORECASE)
+
+
+def _numbers(text: str) -> set[float]:
+    return {float(n.replace(",", "")) * {"k": 1e3, "m": 1e6}.get((u or "").lower(), 1)
+            for n, u in NUMBER.findall(text)}
+
+
+def states_region(text: str, region: str) -> bool:
+    """Does the requirement's text name this region as where data must be?"""
+    region = region.upper()
+    codes = REGION_CODES.get(region, (region,))
+    named = any(re.search(rf"(?<![\w.]){re.escape(c)}(?![\w])", text) for c in codes) or bool(
+        REGION_WORDS.get(region) and re.search(rf"\b(?:{REGION_WORDS[region]})\b", text, re.I))
+    return named and bool(LOCATION_WORDS.search(text))
+
+
+def grounded(raw: dict, text: str, recorded_users: float | None = None) -> tuple[dict, list[str]]:
+    """The extracted constraints the text actually states, and what was dropped (and why)."""
+    out, dropped = {}, []
+    numbers = _numbers(text)
+    region = raw.get("data_residency")
+    if region not in (None, ""):
+        if states_region(text, str(region)):
+            out["data_residency"] = str(region).upper()
+        else:
+            dropped.append(f"data_residency={region} (the requirement names no such region)")
+    for key in ("max_monthly_cost_usd", "expected_users"):
+        value = raw.get(key)
+        if value in (None, ""):
+            continue
+        try:
+            value = float(str(value).replace(",", "").replace("$", ""))
+        except ValueError:
+            dropped.append(f"{key}={value} (not a number)")
+            continue
+        ok = value in numbers
+        if key == "expected_users" and not ok and recorded_users:   # "10x the users"
+            ok = any(abs(float(k) * recorded_users - value) < 1 for k in MULTIPLIER.findall(text))
+        if ok:
+            out[key] = int(value) if value.is_integer() else value
+        else:
+            dropped.append(f"{key}={value:g} (not stated in the requirement)")
+    if "expected_users" not in out and recorded_users and re.search(r"\buser", text, re.I):
+        for k in MULTIPLIER.findall(text):
+            out["expected_users"] = int(float(k) * recorded_users)
+            break
+    return out, dropped
+
 
 JUDGE_SYSTEM = ("You check whether an existing technical decision still holds after a new "
                 "requirement. Answer with one JSON object only.")
@@ -40,7 +102,13 @@ Code it affects: {files}
 Known facts: {facts}
 
 Is this decision affected, i.e. must it be re-evaluated because of the new requirement?
-Return {{"affected": true or false, "reason": "<one line>"}}"""
+It is affected only if the requirement touches a concrete property of THIS decision itself
+(e.g. "stores personal data", "sends user data to a third-party API", "cost scales with call
+volume", "runs only in one region"), not of other parts of the system. If you cannot name such
+a property, it is not affected.
+Return {{"affected": true or false,
+  "property": "<the concrete property of this decision the requirement touches, or empty>",
+  "reason": "<one line>"}}"""
 
 
 def constraints_of(node: dict) -> dict:
@@ -120,6 +188,22 @@ def residency_violation(decision: dict, constraints: dict, pricing, catalog: dic
     return None
 
 
+def cost_fact(graph, project: Path, decision: dict, client, constraints: dict) -> dict | None:
+    """Projected monthly cost of a model decision under the requirement (Pivot Check's math:
+    list price x recorded calls per user x users), or None when the requirement changes neither
+    the budget nor the number of users, or no price is known."""
+    if decision["data"].get("kind") != "model":
+        return None
+    budget, users = constraints.get("max_monthly_cost_usd"), constraints.get("expected_users")
+    if budget is None and users is None:
+        return None
+    from notbydefault.pivot import cost_check, list_price
+    price = list_price(decision["label"], client, project)
+    if not price:
+        return None
+    return cost_check(graph, project, [price], [decision["id"]], users=users, budget=budget)
+
+
 def judge_decision(caller, model: str, decision: dict, text: str, constraints: dict,
                    facts: str) -> dict:
     data = decision["data"]
@@ -135,21 +219,32 @@ def judge_decision(caller, model: str, decision: dict, text: str, constraints: d
     ], span="notbydefault.stale_judge", role="stale_judge", max_tokens=1500, json_mode=True,
         focus_area="verification", attrs={"notbydefault.decision_id": decision["id"]})
     out = parse_json(reply.text)
-    return {"affected": bool(out.get("affected")), "reason": str(out.get("reason") or "").strip()}
+    prop = str(out.get("property") or "").strip()
+    reason = str(out.get("reason") or "").strip()
+    if out.get("affected") and not prop:    # no concrete property named: not affected
+        return {"affected": False, "property": "", "no_property": True,
+                "reason": "the judge named no property of this decision that the requirement "
+                          f"touches (it said: {reason or 'affected'})"}
+    return {"affected": bool(out.get("affected")), "property": prop, "reason": reason}
 
 
 def classify(decision: dict, constraints: dict, verdict: dict, pricing, catalog: dict,
-             facts: dict) -> dict:
+             facts: dict, cost: dict | None = None) -> dict:
     """{"status": "stale"|"needs_review"|"valid"|"unclear", "reason", "basis", "source"}.
 
-    Only a documented fact makes a decision stale; the model's judgement alone can at most ask
-    for a review, so a guess never invalidates a decision.
+    Only a documented fact (provider docs, or list price x recorded volume over the budget)
+    makes a decision stale; the model's judgement alone can at most ask for a review, so a
+    guess never invalidates a decision.
     """
     documented = residency_violation(decision, constraints, pricing, catalog)
     if documented:
         _m, _r, source = provider_facts(decision, pricing, catalog)
         return {"status": "stale", "reason": documented, "basis": "provider documentation",
                 "source": source}
+    if cost and cost["over_budget"]:
+        from notbydefault.pivot import cost_line
+        return {"status": "stale", "reason": cost_line(cost), "basis": "list price x recorded volume",
+                "source": f"{cost['price']['source']} ({cost['price']['fetched']})"}
     svc = service_residency(decision, constraints, catalog, facts)
     if svc:
         basis = ("service documentation" if svc["status"] == "stale"
@@ -158,8 +253,10 @@ def classify(decision: dict, constraints: dict, verdict: dict, pricing, catalog:
     if verdict.get("affected") is None:
         return {"status": "unclear", "reason": verdict.get("reason", ""), "basis": "", "source": ""}
     if verdict["affected"]:
+        prop = verdict.get("property") or ""
+        reason = verdict.get("reason") or "the judge thinks it is affected"
         return {"status": "needs_review", "basis": "model judgement (nothing documented)",
-                "source": "", "reason": verdict.get("reason") or "the judge thinks it is affected"}
+                "source": "", "property": prop, "reason": f"{prop}: {reason}" if prop else reason}
     return {"status": "valid", "reason": verdict.get("reason", ""), "basis": "", "source": ""}
 
 
@@ -200,8 +297,12 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
                 tracer.event("extract_failed", "recovery",
                              f"could not extract constraints ({e}); judging with the text only")
                 raw = {}
-            constraints = {k: v for k, v in raw.items()
-                           if k in ("data_residency", "max_monthly_cost_usd") and v not in (None, "")}
+            from notbydefault.pivot import volume
+            constraints, dropped = grounded(raw, text, volume(g)["users"])
+            if dropped:
+                tracer.event("constraint_dropped", "verification",
+                             "the model extracted constraints the requirement does not state: "
+                             + "; ".join(dropped), dropped=dropped)
         with tracer.step("add_requirement", "state", reason="record the new requirement"):
             rid = g.add_node("requirement", text, {
                 "source": "require", "constraints": constraints, "added_at": now,
@@ -215,18 +316,37 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
             refresh_affected(project, graph=g, tracer=tracer)
         decisions = g.nodes("decision")
         service_facts = load_service_facts(project)
+        costs = {}
+        with tracer.step("cost_facts", "context",
+                         reason="list price x recorded volume for each model decision, when the "
+                                "requirement changes the budget or the number of users"):
+            for d in decisions:
+                c = cost_fact(g, project, d, client, constraints)
+                if c:
+                    from notbydefault.pivot import cost_line
+                    costs[d["id"]] = c
+                    tracer.event("cost_fact", "verification", f"#{d['id']}: {cost_line(c)}",
+                                 decision_id=d["id"], monthly=round(c["monthly"], 2),
+                                 budget=c["budget"], over_budget=c["over_budget"])
 
         def one(d: dict) -> dict:
             m, regions, source = provider_facts(d, pricing, catalog)
             facts = (f"provider model {m}; documented data residency: "
                      f"{', '.join(regions) or 'none guaranteed'} ({source})") if m else ""
+            if d["id"] in costs:
+                from notbydefault.pivot import cost_line
+                facts = "; ".join(x for x in (facts, cost_line(costs[d["id"]])) if x)
             try:
                 verdict = judge_decision(caller, model, d, text, constraints, facts)
             except (LLMError, BudgetExceeded) as e:
                 verdict = {"affected": None, "reason": f"could not judge: {e}"}
                 tracer.event("judge_failed", "recovery",
                              f"decision #{d['id']}: {e}; left unchanged", decision_id=d["id"])
-            c = classify(d, constraints, verdict, pricing, catalog, service_facts)
+            c = classify(d, constraints, verdict, pricing, catalog, service_facts, costs.get(d["id"]))
+            if verdict.get("no_property"):
+                tracer.event("no_property_valid", "verification",
+                             f"#{d['id']}: the judge said affected but named no concrete property "
+                             "of the decision; counting it as valid", decision_id=d["id"])
             if verdict.get("affected") and c["status"] == "needs_review" \
                     and c["basis"].startswith("model"):
                 tracer.event("downgrade_to_review", "verification",
@@ -261,7 +381,8 @@ def require(project: Path, text: str, client=None, tracer=None, out=print,
                              decision_id=d["id"], requirement_id=rid)
             g.update_data(rid, judged={str(r["decision"]["id"]): {
                 "status": r["status"], "affected": r["affected"], "reason": r["reason"],
-                "basis": r["basis"], "source": r["source"]} for r in results})
+                "basis": r["basis"], "source": r["source"],
+                "property": r.get("property", "")} for r in results})
         changed = [r for r in results if r["status"] in ("stale", "needs_review")]
         brain_notes: list[str] = []
         if changed:

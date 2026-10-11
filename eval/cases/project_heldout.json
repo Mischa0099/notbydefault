@@ -1,0 +1,31 @@
+{
+  "_comment": "Held-out project (not used while fixing): a TypeScript invoicing app with different services. Volume: 5,000 users x 10 calls/month = 50,000 model calls/month; budget $100/month. gpt-oss-20b at list price with 1000 in + 300 out tokens per call: about $8.25/month.",
+  "files": {
+    "src/db.ts": "import { createClient } from '@supabase/supabase-js';\nexport const db = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_KEY!);\n",
+    "src/billing.ts": "import Stripe from 'stripe';\nexport const stripe = new Stripe(process.env.STRIPE_KEY!);\n",
+    "src/categorize.ts": "import OpenAI from 'openai';\nconst client = new OpenAI({ baseURL: 'https://api.groq.com/openai/v1' });\nexport const categorize = (line: string) => client.chat.completions.create({ model: 'openai/gpt-oss-20b', messages: [{ role: 'user', content: line }] });\n",
+    "src/assistant.ts": "import Anthropic from '@anthropic-ai/sdk';\nconst client = new Anthropic();\nexport const ask = (q: string) => client.messages.create({ model: 'claude-sonnet-4-5', max_tokens: 400, messages: [{ role: 'user', content: q }] });\n",
+    "prisma/schema.prisma": "datasource db { provider = \"postgresql\" url = env(\"DATABASE_URL\") }\n",
+    "package.json": "{\"dependencies\": {\"@supabase/supabase-js\": \"^2.45.0\", \"stripe\": \"^16.0.0\", \"openai\": \"^4.60.0\", \"@anthropic-ai/sdk\": \"^0.30.0\", \"@prisma/client\": \"^5.20.0\"}}\n"
+  },
+  "context": [
+    {"type": "goal", "label": "Invoicing tool for freelancers, beta in 6 weeks", "data": {"key": "goal"}},
+    {"type": "requirement", "label": "Expected users: 5,000", "data": {"key": "users", "value": "5000"}},
+    {"type": "requirement", "label": "Calls per user per month: 10", "data": {"key": "calls_per_user", "value": 10}},
+    {"type": "constraint", "label": "Monthly budget: $100", "data": {"key": "budget", "value": "100"}}
+  ],
+  "decisions": [
+    {"key": "supabase", "label": "Supabase", "kind": "service", "category": "database", "status": "unreviewed",
+     "evidence": "@supabase/supabase-js", "files": ["src/db.ts", "package.json"]},
+    {"key": "stripe", "label": "Stripe", "kind": "service", "category": "payments", "status": "unreviewed",
+     "evidence": "stripe", "files": ["src/billing.ts", "package.json"]},
+    {"key": "anthropic_sdk", "label": "Anthropic", "kind": "service", "category": "ai-provider", "status": "unreviewed",
+     "evidence": "@anthropic-ai/sdk", "files": ["src/assistant.ts", "package.json"]},
+    {"key": "gpt_oss_20b", "label": "openai/gpt-oss-20b", "kind": "model", "category": "ai-model", "status": "unreviewed",
+     "evidence": "OpenAI model literal", "files": ["src/categorize.ts"]},
+    {"key": "claude_sonnet", "label": "claude-sonnet-4-5", "kind": "model", "category": "ai-model", "status": "unreviewed",
+     "evidence": "Anthropic model literal", "files": ["src/assistant.ts"]},
+    {"key": "prisma", "label": "Prisma", "kind": "service", "category": "orm", "status": "unreviewed",
+     "evidence": "@prisma/client", "files": ["prisma/schema.prisma", "package.json"]}
+  ]
+}

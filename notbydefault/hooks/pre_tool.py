@@ -90,6 +90,29 @@ def record(graph, detection, event: dict, project_dir: Path) -> int:
     return decision_id
 
 
+def skip_if_decided(graph, detection, event: dict, project_dir: Path, tracer) -> bool:
+    """True when the choice is already made in this project; counts it as seen on the existing
+    decision (if any) instead of asking again."""
+    from notbydefault.detect import FILE_TOOLS, already_decided
+    tool_input = event.get("tool_input") or {}
+    exclude = tool_input.get("file_path") if event.get("tool_name") in FILE_TOOLS else None
+    hit = already_decided(graph, detection, project_dir, exclude)
+    if not hit:
+        return False
+    why, node = hit
+    if node:
+        old = node["data"]
+        files = old.get("files") or ([old["file"]] if old.get("file") else [])
+        file = _rel(detection.file, project_dir)
+        if file and file not in files:
+            files.append(file)
+        graph.update_data(node["id"], times_seen=old.get("times_seen", 1) + 1, files=files)
+    tracer.event("already_decided", "planning",
+                 f"{detection.chosen} ({detection.kind}): {why}; not interrupting",
+                 chosen=detection.chosen, decision_id=node and node["id"])
+    return True
+
+
 def _spawn_telemetry(payload: dict, project_dir: Path) -> None:
     """Send the neatlogs span from a detached process so the hook stays fast.
 
@@ -160,6 +183,12 @@ def handle(event: dict, project_dir: Path, tracer=None) -> dict | None:
     from notbydefault.graph import Graph
 
     with Graph.for_project(project_dir) as graph:
+        with tracer.step("already_decided", "context",
+                         reason="don't interrupt for a choice the project already made"):
+            detections = [d for d in detections
+                          if not skip_if_decided(graph, d, event, project_dir, tracer)]
+        if not detections:
+            return None
         with tracer.step("record", "state", reason="store the decision in the Decision Graph"):
             ids = [record(graph, d, event, project_dir) for d in detections]
         with tracer.step("briefing", "context",

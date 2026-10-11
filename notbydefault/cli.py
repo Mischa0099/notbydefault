@@ -208,7 +208,9 @@ def cmd_pivot(args) -> int:
 
 
 def cmd_eval(args) -> int:
-    from notbydefault.evals import SECTIONS, run
+    from notbydefault.evals import SECTIONS, compare, run
+    if args.compare:
+        return compare(args.compare, args.version)
     sections = [x.strip() for x in args.sections.split(",")] if args.sections else None
     unknown = [x for x in sections or [] if x not in SECTIONS]
     if unknown:
@@ -368,6 +370,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--sections", help="comma-separated subset of detection,pivot,requirements,fit "
                                       "(updates those sections in an existing results file)")
     p.add_argument("--out", help="results file (default eval/results/<version>.json)")
+    p.add_argument("--compare", metavar="OLD",
+                   help="don't run: print a before/after table of OLD vs --version")
     p.set_defaults(func=cmd_eval)
 
     args = parser.parse_args(argv)

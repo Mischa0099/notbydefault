@@ -56,9 +56,10 @@ def handle(event: dict, project_dir: Path, client=None, tracer=None) -> tuple[di
                        if stale else ""))
             return _context(text), info
         labels = [d["label"] for d in g.nodes("decision")]
+        plan = [n["label"] for t in ("goal", "requirement", "constraint") for n in g.nodes(t)]
 
     started = time.perf_counter()
-    phrases = prefilter(prompt, stack_terms(labels))
+    phrases = prefilter(prompt, stack_terms(labels), plan)
     info.update(stage="prefilter", phrases=phrases,
                 prefilter_ms=round((time.perf_counter() - started) * 1000, 3))
     if not phrases:

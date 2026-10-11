@@ -405,3 +405,185 @@ def test_require_writes_decision_records_for_both_lists(project):
     review = next(t for t in texts.values() if "MongoDB" in t)
     assert "STALE" in stale and "documents data residency" in stale
     assert "Needs review" in review and "mongodb.com" in review
+
+
+# --- Milestone 5 fixes: grounded constraints (R2) and cost facts (R1) ---------------------
+
+class OverreachingExtractor(FakeTransport):
+    """An extractor that infers constraints the requirement never states, and a judge that
+    calls every decision affected."""
+
+    def __init__(self, extracted, prop="handles the data"):
+        super().__init__()
+        self.extracted, self.prop = extracted, prop
+
+    def respond(self, model, messages):
+        system = messages[0]["content"] if messages[0]["role"] == "system" else ""
+        if system.startswith("You turn a product requirement"):
+            return "extract", json.dumps({**self.extracted, "summary": "fake"})
+        if system.startswith("You check whether an existing technical decision"):
+            return "stale_judge", json.dumps({"affected": True, "property": self.prop,
+                                              "reason": "judge thinks so"})
+        return super().respond(model, messages)
+
+
+def test_hipaa_alone_never_makes_anything_stale(project):
+    p, did, db = project
+    t = OverreachingExtractor({"data_residency": "US", "max_monthly_cost_usd": 10,
+                               "expected_users": 1_000_000})
+    run_require(p, "We will store patient health records, so we must be HIPAA compliant", t)
+    with Graph.for_project(p) as g:
+        [req] = [n for n in g.nodes("requirement") if n["data"].get("source") == "require"]
+        assert req["data"]["constraints"] == {}            # nothing the text states
+        for d in g.nodes("decision"):
+            assert d["data"]["status"] != "stale", d
+            assert d["data"]["status"] == "needs_review"   # the judge may still ask for review
+
+
+def test_grounded_keeps_only_what_the_text_states():
+    from notbydefault.stale import grounded
+    assert grounded({"data_residency": "EU"}, "All user data must stay in the EU")[0] == \
+        {"data_residency": "EU"}
+    assert grounded({"data_residency": "US"}, "Must be HIPAA compliant")[0] == {}
+    assert grounded({"data_residency": "US"}, "Tell us where it is stored")[0] == {}
+    assert grounded({"max_monthly_cost_usd": 50}, "Budget is cut to $50 a month")[0] == \
+        {"max_monthly_cost_usd": 50}
+    assert grounded({"max_monthly_cost_usd": 40}, "Budget is cut to $50 a month")[0] == {}
+    assert grounded({}, "Plan for 10x the users", recorded_users=20000)[0] == \
+        {"expected_users": 200000}
+    assert grounded({"expected_users": 200000}, "Expect 200,000 users")[0] == \
+        {"expected_users": 200000}
+
+
+def test_budget_cut_marks_an_over_budget_model_stale(project):
+    p, did, db = project
+    t = OverreachingExtractor({"max_monthly_cost_usd": 50})
+    code, report, _ = run_require(p, "The monthly budget is cut to $50.", t)
+    with Graph.for_project(p) as g:
+        model = g.get_node(did)["data"]
+        assert model["status"] == "stale"
+        assert model["stale_basis"] == "list price x recorded volume"
+        assert "vs a $50/month budget (OVER BUDGET)" in model["stale_reason"]
+        assert "1,200,000 calls/month" in model["stale_reason"]   # 20,000 users x 60 calls
+        # a service has no list price: the judge can only ask for a review
+        assert g.get_node(db)["data"]["status"] == "needs_review"
+    assert "OVER BUDGET" in report
+
+
+def test_user_growth_uses_the_new_volume_against_the_recorded_budget(project):
+    p, did, db = project
+    t = OverreachingExtractor({})
+    run_require(p, "Plan for 10x the users.", t)
+    with Graph.for_project(p) as g:
+        model = g.get_node(did)["data"]
+        assert model["status"] == "stale"
+        assert "12,000,000 calls/month" in model["stale_reason"]  # 200,000 users x 60 calls
+        assert "vs a $375/month budget" in model["stale_reason"]
+
+
+def test_cost_facts_reach_the_judge(project):
+    p, did, db = project
+    seen = []
+
+    class Spy(OverreachingExtractor):
+        def respond(self, model, messages):
+            if messages[0]["content"].startswith("You check whether"):
+                seen.append(messages[-1]["content"])
+            return super().respond(model, messages)
+    run_require(p, "The monthly budget is cut to $50.", Spy({"max_monthly_cost_usd": 50}))
+    [prompt] = [s for s in seen if "openai/gpt-oss-120b" in s.split("Kind:")[0]]
+    assert "Cost check:" in prompt and "OVER BUDGET" in prompt
+
+
+def test_requirement_that_changes_no_cost_inputs_adds_no_cost_fact(project):
+    p, did, db = project
+    run_require(p, "We signed an EU customer: EU data residency required")
+    with Graph.for_project(p) as g:
+        assert g.get_node(did)["data"]["stale_basis"] == "provider documentation"
+
+
+# --- widened pre-filter (P1) ----------------------------------------------------------------
+
+@pytest.mark.parametrize("prompt", [
+    "Use Postgres for storage from now on, not Mongo.",
+    "We're going with Gemini 3.8 Flash for action items.",
+    "Use Postgres, not Mongo",
+])
+def test_prefilter_catches_pivots_without_the_old_phrases(prompt):
+    assert prefilter(prompt, stack_terms(LABELS))
+
+
+@pytest.mark.parametrize("prompt", [
+    "this is not a bug, the test is wrong",
+    "do not drop the table",
+    "from now on, write tests before the code",
+])
+def test_widened_prefilter_still_skips_non_stack_prompts(prompt):
+    assert prefilter(prompt, stack_terms(LABELS)) == []
+
+
+def test_spoken_model_names_get_a_price_lookup_id():
+    from notbydefault.pivot import named_models
+    assert named_models("We're going with Gemini 3.8 Flash and GPT 4o") == \
+        ["gemini-3.8-flash", "gpt-4o"]
+
+
+# --- goal / deadline changes (P2) -----------------------------------------------------------
+
+PLAN = ["A notes API for a small team, MVP in 2 weeks", "Expected users: 20,000",
+        "Monthly budget: $375", "Team size: 2"]
+
+
+@pytest.mark.parametrize("prompt", [
+    "Forget the 2-week MVP, we're building this as a full enterprise platform now.",
+    "We now need this by Friday.",
+    "The deadline moved: we have to ship within 3 days.",
+])
+def test_prefilter_catches_goal_and_deadline_changes_from_the_plan(prompt):
+    assert prefilter(prompt, stack_terms(LABELS), PLAN)
+
+
+def test_plan_changes_need_a_recorded_goal_to_touch():
+    assert prefilter("We now need this by Friday.", stack_terms(LABELS), []) == []
+    assert prefilter("We now need this by Friday.", stack_terms(LABELS),
+                     ["A notes API for a small team"]) == []     # no deadline recorded
+
+
+def test_ordinary_prompts_stay_free_with_the_plan():
+    terms = stack_terms(LABELS)
+    assert [p for p in ORDINARY if prefilter(p, terms, PLAN)] == []
+
+
+def test_hook_passes_the_plan_to_the_prefilter(project):
+    p, _, _ = project
+    out, info, t = hook(p, "We now need this by Friday.")
+    assert info["stage"] == "prefilter" and t.calls == []    # no deadline recorded yet
+    with Graph.for_project(p) as g:
+        g.add_node("goal", "MVP in 2 weeks", {"source": "init", "key": "goal"})
+    out, info, t = hook(p, "We now need this by Friday.")
+    assert info["stage"] != "prefilter" and any("plan:" in x for x in info["phrases"])
+    assert len(t.calls) == 1
+
+
+# --- the judge must name a property (R3) ------------------------------------------------------
+
+def test_affected_without_a_named_property_is_valid(project):
+    p, did, db = project
+    run_require(p, "All API responses must be JSON", OverreachingExtractor({}, prop=""))
+    with Graph.for_project(p) as g:
+        for d in g.nodes("decision"):
+            assert d["data"]["status"] not in ("needs_review", "stale"), d
+        [req] = [n for n in g.nodes("requirement") if n["data"].get("source") == "require"]
+        assert all(j["status"] == "valid" and "named no property" in j["reason"]
+                   for j in req["data"]["judged"].values())
+
+
+def test_needs_review_reason_shows_the_property(project):
+    p, did, db = project
+    code, report, _ = run_require(p, "We must be HIPAA compliant",
+                                  OverreachingExtractor({}, prop="stores personal data"))
+    with Graph.for_project(p) as g:
+        mongo = g.get_node(db)["data"]
+        assert mongo["status"] == "needs_review"
+        assert mongo["review_reason"].startswith("stores personal data: ")
+    assert "why:   stores personal data: " in report

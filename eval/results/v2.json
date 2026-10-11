@@ -1,0 +1,944 @@
+{
+  "version": "v2",
+  "sections": {
+    "detection": {
+      "cases": [
+        {
+          "case": "det-pip-db-sdk",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "MongoDB"
+          ],
+          "flagged": [
+            "MongoDB"
+          ],
+          "asked": true,
+          "ms": 33.5
+        },
+        {
+          "case": "det-npm-supabase",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "Supabase"
+          ],
+          "flagged": [
+            "Supabase"
+          ],
+          "asked": true,
+          "ms": 25.1
+        },
+        {
+          "case": "det-pnpm-orm-and-db",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "Drizzle",
+            "PostgreSQL"
+          ],
+          "flagged": [
+            "Drizzle",
+            "PostgreSQL"
+          ],
+          "asked": true,
+          "ms": 31.0
+        },
+        {
+          "case": "det-poetry-extras",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "PostgreSQL"
+          ],
+          "flagged": [
+            "PostgreSQL"
+          ],
+          "asked": true,
+          "ms": 23.7
+        },
+        {
+          "case": "det-ps-ai-provider",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "Groq"
+          ],
+          "flagged": [
+            "Groq"
+          ],
+          "asked": true,
+          "ms": 19.3
+        },
+        {
+          "case": "det-uv-anthropic",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "Anthropic"
+          ],
+          "flagged": [
+            "Anthropic"
+          ],
+          "asked": true,
+          "ms": 27.8
+        },
+        {
+          "case": "det-mixed-install",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "OpenAI"
+          ],
+          "flagged": [
+            "OpenAI"
+          ],
+          "asked": true,
+          "ms": 22.1
+        },
+        {
+          "case": "det-manifest-edit",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "Google Gemini"
+          ],
+          "flagged": [
+            "Google Gemini"
+          ],
+          "asked": true,
+          "ms": 33.5
+        },
+        {
+          "case": "det-package-json-write",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "MongoDB"
+          ],
+          "flagged": [
+            "MongoDB"
+          ],
+          "asked": true,
+          "ms": 31.0
+        },
+        {
+          "case": "det-hardcoded-model-py",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "claude-sonnet-4-5"
+          ],
+          "flagged": [
+            "claude-sonnet-4-5"
+          ],
+          "asked": true,
+          "ms": 40.7
+        },
+        {
+          "case": "det-model-swap-edit",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "gpt-4o-mini"
+          ],
+          "flagged": [
+            "gpt-4o-mini"
+          ],
+          "asked": true,
+          "ms": 26.5
+        },
+        {
+          "case": "det-hardcoded-model-js",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "gpt-4.1"
+          ],
+          "flagged": [
+            "gpt-4.1"
+          ],
+          "asked": true,
+          "ms": 24.7
+        },
+        {
+          "case": "det-env-model",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "gpt-4o-mini"
+          ],
+          "flagged": [
+            "gpt-4o-mini"
+          ],
+          "asked": true,
+          "ms": 24.9
+        },
+        {
+          "case": "det-yaml-model",
+          "split": "original",
+          "ok": true,
+          "expected": [
+            "gemini-2.5-flash"
+          ],
+          "flagged": [
+            "gemini-2.5-flash"
+          ],
+          "asked": true,
+          "ms": 21.6
+        },
+        {
+          "case": "det-shell-append-manifest",
+          "split": "original",
+          "ok": false,
+          "expected": [
+            "OpenAI"
+          ],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4,
+          "reason": "missed: expected ['OpenAI'], the hook stayed silent"
+        },
+        {
+          "case": "neg-read-file",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-cat-file",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-grep-provider",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-pip-show",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-ordinary-edit",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 1.4
+        },
+        {
+          "case": "neg-edit-near-existing-model",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 1.3
+        },
+        {
+          "case": "neg-pip-test-lib",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-npm-dev-test-lib",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-pip-utility",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-reinstall-requirements",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-npm-install-all",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.5
+        },
+        {
+          "case": "neg-run-tests",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.4
+        },
+        {
+          "case": "neg-git-commit",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 0.3
+        },
+        {
+          "case": "neg-test-file-existing-model",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 39.3
+        },
+        {
+          "case": "neg-reinstall-accepted",
+          "split": "original",
+          "ok": true,
+          "expected": [],
+          "flagged": [],
+          "asked": false,
+          "ms": 5.9
+        },
+        {
+          "case": "ho-det-ini-model",
+          "split": "heldout",
+          "ok": true,
+          "expected": [
+            "mistral-large-latest"
+          ],
+          "flagged": [
+            "mistral-large-latest"
+          ],
+          "asked": true,
+          "ms": 29.1
+        },
+        {
+          "case": "ho-det-bun-clerk",
+          "split": "heldout",
+          "ok": true,
+          "expected": [
+            "Clerk"
+          ],
+          "flagged": [
+            "Clerk"
+          ],
+          "asked": true,
+          "ms": 25.7
+        },
+        {
+          "case": "ho-neg-docs-mention",
+          "split": "heldout",
+          "ok": false,
+          "expected": [],
+          "flagged": [
+            "gpt-4o",
+            "claude-sonnet-4-5"
+          ],
+          "asked": true,
+          "ms": 34.6,
+          "reason": "false interruption: flagged ['claude-sonnet-4-5', 'gpt-4o'] on docs comparing models, no choice made"
+        }
+      ],
+      "failures": [
+        {
+          "case": "det-shell-append-manifest",
+          "split": "original",
+          "reason": "missed: expected ['OpenAI'], the hook stayed silent"
+        },
+        {
+          "case": "ho-neg-docs-mention",
+          "split": "heldout",
+          "reason": "false interruption: flagged ['claude-sonnet-4-5', 'gpt-4o'] on docs comparing models, no choice made"
+        }
+      ],
+      "metrics": {
+        "cases": 30,
+        "passed": 29,
+        "precision": 1.0,
+        "recall": 0.938,
+        "interruptions": 14,
+        "false_interruptions": 0,
+        "false_interruption_rate": 0.0,
+        "negatives": 15
+      },
+      "heldout_metrics": {
+        "cases": 3,
+        "passed": 2,
+        "precision": 0.5,
+        "recall": 1.0,
+        "interruptions": 3,
+        "false_interruptions": 1,
+        "false_interruption_rate": 1.0,
+        "negatives": 1
+      },
+      "trace_id": "9aca23456b6477fb71945176dd8d2b4f",
+      "seconds": 0.7
+    },
+    "pivot": {
+      "cases": [
+        {
+          "case": "piv-db-switch",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "Actually",
+            "let's switch"
+          ],
+          "change": "Switch database from MongoDB to Postgres",
+          "mapped": [
+            "mongodb"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1133.9
+        },
+        {
+          "case": "piv-provider-drop",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "Drop"
+          ],
+          "change": "Switch from OpenAI to Anthropic API",
+          "mapped": [
+            "openai_sdk"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 680.9
+        },
+        {
+          "case": "piv-model-upgrade",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "What if we",
+            "instead"
+          ],
+          "change": "Use gpt-4o for action items",
+          "mapped": [
+            "gpt_oss_120b"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1277.1
+        },
+        {
+          "case": "piv-summarizer-model",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "replace"
+          ],
+          "change": "Replace gemini-3.1-flash-lite with claude-sonnet-4-5",
+          "mapped": [
+            "gemini_lite"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 815.6
+        },
+        {
+          "case": "piv-cache-removal",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "Get rid of"
+          ],
+          "change": "Remove Redis service",
+          "mapped": [
+            "redis"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 56650.8
+        },
+        {
+          "case": "piv-goal-change",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "Forget the",
+            "plan: mvp, timeline"
+          ],
+          "change": "Goal changed from 2\u2011week MVP to full enterprise platform",
+          "mapped": [],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1277.0
+        },
+        {
+          "case": "piv-no-trigger-db",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "from now on",
+            "not Mongo."
+          ],
+          "change": "Switch database from MongoDB to Postgres",
+          "mapped": [
+            "mongodb"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1090.4
+        },
+        {
+          "case": "piv-no-trigger-provider",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "going with"
+          ],
+          "change": "Switch from openai/gpt-oss-120b to Gemini 3.8 Flash for action items",
+          "mapped": [
+            "gpt_oss_120b"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1092.3
+        },
+        {
+          "case": "piv-self-host",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "Let's move"
+          ],
+          "change": "Switch from Groq-hosted openai/gpt-oss-120b to self-hosted GPU model",
+          "mapped": [
+            "gpt_oss_120b"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 56811.6
+        },
+        {
+          "case": "ord-actually-bug",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Actually"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 714.9
+        },
+        {
+          "case": "ord-instead-404",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "instead"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1197.2
+        },
+        {
+          "case": "ord-instead-dict",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "instead"
+          ],
+          "change": "use dict instead of list for parsed model output",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 786.0
+        },
+        {
+          "case": "ord-replace-prints",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Replace"
+          ],
+          "change": "Replace print statements with logging",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 811600.6
+        },
+        {
+          "case": "ord-drop-import",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Drop"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 729.8
+        },
+        {
+          "case": "ord-switch-env",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Switch to",
+            "instead"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 934.6
+        },
+        {
+          "case": "ord-actually-timeout",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Actually"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 626.1
+        },
+        {
+          "case": "ord-rather-than",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Rather than"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 57249.5
+        },
+        {
+          "case": "ord-migrate-schema",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "prefilter",
+          "phrases": [],
+          "change": null,
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 0,
+          "llm_calls_cached": 0,
+          "ms": 18.2
+        },
+        {
+          "case": "ord-cache-key",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Actually"
+          ],
+          "change": "include user id in Redis cache key",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 827.4
+        },
+        {
+          "case": "ord-let-us-use-fixture",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Let's use",
+            "instead"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 752.1
+        },
+        {
+          "case": "ord-explain-model",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "go with"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 1016.9
+        },
+        {
+          "case": "ord-move-config",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "instead"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 57345.7
+        },
+        {
+          "case": "ord-retry",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Instead"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 695.1
+        },
+        {
+          "case": "ord-plain",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "prefilter",
+          "phrases": [],
+          "change": null,
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 0,
+          "llm_calls_cached": 0,
+          "ms": 5.0
+        },
+        {
+          "case": "ord-actually-tests",
+          "split": "original",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "prefilter",
+          "phrases": [],
+          "change": null,
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 0,
+          "llm_calls_cached": 0,
+          "ms": 5.1
+        },
+        {
+          "case": "ho-piv-ditch-groq",
+          "split": "heldout",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "ditch"
+          ],
+          "change": "Switch from Groq to OpenRouter for model hosting",
+          "mapped": [
+            "gpt_oss_120b"
+          ],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 903.2
+        },
+        {
+          "case": "ho-piv-deadline",
+          "split": "heldout",
+          "ok": true,
+          "expected_pivot": true,
+          "said_pivot": true,
+          "stage": "confirmed",
+          "phrases": [
+            "instead",
+            "Change of plans",
+            "plan: timeline"
+          ],
+          "change": "shorten project deadline to 5 days",
+          "mapped": [],
+          "mapping_ok": true,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 957.9
+        },
+        {
+          "case": "ho-ord-rename",
+          "split": "heldout",
+          "ok": true,
+          "expected_pivot": false,
+          "said_pivot": false,
+          "stage": "not_pivot",
+          "phrases": [
+            "Actually"
+          ],
+          "change": "",
+          "mapped": [],
+          "mapping_ok": null,
+          "llm_calls": 1,
+          "llm_calls_cached": 0,
+          "ms": 57128.6
+        }
+      ],
+      "failures": [],
+      "metrics": {
+        "cases": 25,
+        "passed": 25,
+        "precision": 1.0,
+        "recall": 1.0,
+        "false_pivots": 0,
+        "missed_pivots": 0,
+        "llm_calls_per_ordinary_prompt": 0.812,
+        "ordinary_prompts_reaching_llm": "13/16",
+        "mapping_accuracy": 1.0,
+        "llm_calls": 22,
+        "llm_calls_cached": 0
+      },
+      "heldout_metrics": {
+        "cases": 3,
+        "passed": 3,
+        "precision": 1.0,
+        "recall": 1.0,
+        "false_pivots": 0,
+        "missed_pivots": 0,
+        "llm_calls_per_ordinary_prompt": 1.0,
+        "ordinary_prompts_reaching_llm": "1/1",
+        "mapping_accuracy": 1.0,
+        "llm_calls": 3,
+        "llm_calls_cached": 0
+      },
+      "trace_id": "884a310de3937e70fbabbac5d6ed9d6a",
+      "seconds": 1115.4
+    }
+  },
+  "run_at": "2026-10-11T03:48:01+00:00",
+  "commit": "4efa11d"
+}

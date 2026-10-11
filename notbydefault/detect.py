@@ -88,9 +88,9 @@ KNOWN_SCOPES: dict[str, tuple[str, str]] = {
     "@firebase/": ("Firebase", "database"),
 }
 
-# Hardcoded model identifiers, matched only inside a string literal.
-MODEL_ID = re.compile(
-    r"""["'`](
+# Known model-name patterns (verbose regex). In code they count only inside a string literal;
+# in config files also as the whole unquoted value of a `key = value` / `key: value` line.
+MODEL_NAME = r"""
         gpt-\d[\w.:-]*
       | (?:openai/)?gpt-oss-[\w.:-]+
       | chatgpt-[\w.:-]+
@@ -106,9 +106,26 @@ MODEL_ID = re.compile(
       | (?:qwen/)?qwen[\d.]*-[\w.:-]+
       | gemma-?\d[\w.:-]*
       | text-embedding-[\w.:-]+
-    )["'`]""",
-    re.IGNORECASE | re.VERBOSE,
-)
+"""
+MODEL_ID = re.compile(rf"""["'`]({MODEL_NAME})["'`]""", re.IGNORECASE | re.VERBOSE)
+# config-like files: .env*, YAML, TOML, INI, ... (unquoted values are normal there)
+CONFIG_SUFFIXES = {".env", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".properties"}
+CONFIG_VALUE = re.compile(
+    rf"""^[ \t]*(?:(?:export|ENV)[ \t]+)?(?P<key>[\w.-]+)[ \t]*[:=][ \t]*
+         (?P<model>{MODEL_NAME})[ \t]*(?:\#.*)?$""",
+    re.IGNORECASE | re.VERBOSE | re.MULTILINE)
+# bare names this short ("o3") count only under a key that says it is a model
+SHORT_MODEL = re.compile(r"o\d", re.IGNORECASE)
+MODEL_KEY = re.compile(r"model|llm|engine|deployment", re.IGNORECASE)
+
+
+def is_config(path: str | None) -> bool:
+    if not path:
+        return False
+    p = Path(path.replace("\\", "/"))
+    name = p.name.lower()
+    return (p.suffix.lower() in CONFIG_SUFFIXES or name.startswith(".env")
+            or name.endswith(".env") or name in {"dockerfile", "procfile"})
 
 MODEL_PROVIDERS = [
     ("gpt-", "OpenAI"), ("openai/", "OpenAI"), ("gemma", "Google"), ("chatgpt-", "OpenAI"), ("o1", "OpenAI"), ("o3", "OpenAI"),
@@ -292,10 +309,16 @@ def dependency_names(path: str, text: str) -> set[str]:
     return names
 
 
-def model_ids(text: str) -> list[str]:
+def model_ids(text: str, path: str | None = None) -> list[str]:
+    """Model names in string literals, plus unquoted config values when `path` is a config file."""
     seen: dict[str, None] = {}
     for m in MODEL_ID.finditer(text):
         seen.setdefault(m.group(1), None)
+    if is_config(path):
+        for m in CONFIG_VALUE.finditer(text):
+            if SHORT_MODEL.fullmatch(m.group("model")) and not MODEL_KEY.search(m.group("key")):
+                continue
+            seen.setdefault(m.group("model"), None)
     return list(seen)
 
 
@@ -323,8 +346,8 @@ def detect_file_change(path: str, old_text: str, new_text: str) -> list[Detectio
     if is_manifest(path):
         added = dependency_names(path, new_text) - dependency_names(path, old_text)
         detections += _services_from_packages(sorted(added), "manifest", path)
-    before = {m.lower() for m in model_ids(old_text)}
-    for model in model_ids(new_text):
+    before = {m.lower() for m in model_ids(old_text, path)}
+    for model in model_ids(new_text, path):
         if model.lower() not in before:
             detections.append(Detection("model", model, "ai-model",
                                         f"{model_provider(model)} model literal", "code", path))
@@ -342,6 +365,75 @@ def detect_file_tool(tool_name: str, tool_input: dict) -> list[Detection]:
     old = current if current is not None else "\n".join(e.get("old_string") or "" for e in edits)
     new = "\n".join(e.get("new_string") or "" for e in edits)
     return detect_file_change(path, old, new)
+
+
+# --- already decided in this project ------------------------------------------
+
+DECIDED_STATUSES = {"reviewed", "accepted", "kept"}
+SKIP_DIRS = {".git", ".notbydefault", ".claude", ".entire", "node_modules", ".venv", "venv",
+             "env", "__pycache__", ".pytest_cache", "dist", "build", ".next", "site-packages"}
+CODE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".go", ".rb", ".java",
+                 ".kt", ".rs", ".php", ".cs", ".swift", ".json", ".toml", ".yaml", ".yml",
+                 ".cfg", ".ini", ".txt"}
+MAX_SCAN_FILES = 2000
+
+
+def _project_files(project: Path, exclude: Path | None):
+    """Source and config files under the project (bounded, skipping vendored/tool dirs)."""
+    import os
+    n = 0
+    for root, dirs, files in os.walk(project):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not d.endswith(".egg-info")]
+        for name in files:
+            p = Path(root, name)
+            if p.suffix.lower() not in CODE_SUFFIXES and not name.startswith(".env"):
+                continue
+            if exclude is not None and p.resolve() == exclude:
+                continue
+            n += 1
+            if n > MAX_SCAN_FILES:
+                return
+            yield p
+
+
+def used_elsewhere(detection: Detection, project_dir: Path,
+                   exclude: str | None = None) -> str | None:
+    """A project file (other than `exclude`, the file being written) that already uses the
+    chosen model literal or declares a package of the chosen service."""
+    project = Path(project_dir).resolve()
+    skip = Path(exclude).resolve() if exclude else None
+    want = detection.chosen.lower()
+    for path in _project_files(project, skip):
+        if detection.kind == "service" and not is_manifest(str(path)):
+            continue
+        text = _read(str(path))
+        if not text:
+            continue
+        if detection.kind == "model":
+            hit = want in {m.lower() for m in model_ids(text, str(path))}
+        else:
+            hit = any((lookup_service(pkg) or ("", ""))[0].lower() == want
+                      for pkg in dependency_names(str(path), text))
+        if hit:
+            return path.relative_to(project).as_posix()
+    return None
+
+
+def already_decided(graph, detection: Detection, project_dir: Path,
+                    exclude: str | None = None) -> tuple[str, dict | None] | None:
+    """(why, existing decision node or None) when this choice is already made in the project:
+    a reviewed/accepted decision for it exists, or another file already uses it."""
+    existing = [d for d in graph.nodes("decision")
+                if d["data"].get("kind") == detection.kind
+                and d["label"].lower() == detection.chosen.lower()]
+    for d in existing:
+        status = d["data"].get("status")
+        if status in DECIDED_STATUSES:
+            return f"already a {status} decision (#{d['id']})", d
+    where = used_elsewhere(detection, project_dir, exclude)
+    if where:
+        return f"already used in {where}", (existing[0] if existing else None)
+    return None
 
 
 # --- entry point --------------------------------------------------------------

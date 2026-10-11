@@ -99,7 +99,7 @@ def test_hook_shows_at_most_four_lines_from_cache_only(project, monkeypatch):
     (project / "summary.py").write_text("")
     ev = {"session_id": "s", "tool_name": "Write", "cwd": str(project),
           "tool_input": {"file_path": str(project / "summary.py"),
-                         "content": 'MODEL = "openai/gpt-oss-120b"\n'}}
+                         "content": 'MODEL = "openai/gpt-oss-20b"\n'}}
     out = handle(ev, project)
     reason = out["hookSpecificOutput"]["permissionDecisionReason"]
     head, brief = reason.split("\nBriefing (full version in `check`):\n")
@@ -112,7 +112,7 @@ def test_hook_without_cache_still_briefs_from_the_graph(project):
     (project / "summary.py").write_text("")
     ev = {"session_id": "s", "tool_name": "Write", "cwd": str(project),
           "tool_input": {"file_path": str(project / "summary.py"),
-                         "content": 'MODEL = "openai/gpt-oss-120b"\n'}}
+                         "content": 'MODEL = "openai/gpt-oss-20b"\n'}}
     reason = handle(ev, project)["hookSpecificOutput"]["permissionDecisionReason"]
     assert "Past decision #1" in reason
 
@@ -121,8 +121,8 @@ def test_hook_journal_tags_focus_areas(project):
     from notbydefault.fit.tracing import FOCUS_AREAS, Tracer
     t = Tracer()
     ev = {"session_id": "s", "tool_name": "Bash", "cwd": str(project),
-          "tool_input": {"command": "pip install pymongo"}}
+          "tool_input": {"command": "pip install redis"}}
     handle(ev, project, tracer=t)
     steps = [e for e in t.journal if e["kind"] == "step"]
-    assert [s["name"] for s in steps] == ["detect", "record", "briefing"]
+    assert [s["name"] for s in steps] == ["detect", "already_decided", "record", "briefing"]
     assert all(e["focus_area"] in FOCUS_AREAS for e in t.journal)

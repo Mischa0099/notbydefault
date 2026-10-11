@@ -162,3 +162,39 @@ def test_pyproject_new_dependency(tmp_path):
 def test_other_tools_ignored():
     assert detect({"tool_name": "Read", "tool_input": {"file_path": "x"}}) == []
     assert detect({}) == []
+
+
+# --- unquoted model names in config files (D1) ---------------------------------------------
+
+def write(path, content):
+    return {"tool_name": "Write", "tool_input": {"file_path": str(path), "content": content}}
+
+
+@pytest.mark.parametrize("name,content,model", [
+    (".env", "OPENAI_MODEL=gpt-4o-mini\n", "gpt-4o-mini"),
+    (".env.local", "export LLM=claude-sonnet-4-5\n", "claude-sonnet-4-5"),
+    ("config.yaml", "llm:\n  provider: google\n  model: gemini-2.5-flash  # fast\n",
+     "gemini-2.5-flash"),
+    ("settings.toml", "[llm]\nmodel = mistral-large-latest\n", "mistral-large-latest"),
+    ("Dockerfile", "FROM python:3.12\nENV MODEL=gpt-4.1\n", "gpt-4.1"),
+    ("app.yml", "reasoning_model: o3\n", "o3"),
+])
+def test_unquoted_model_in_config_file(tmp_path, name, content, model):
+    assert chosen(detect(write(tmp_path / name, content))) == [("model", model)]
+
+
+@pytest.mark.parametrize("name,content", [
+    ("app.py", "MODEL = gpt-4o\n"),                       # not a config file
+    ("notes.md", "model: gpt-4o\n"),                      # prose, not config
+    ("config.yaml", "description: use gpt-4o for chat\n"),  # not the whole value
+    ("config.yaml", "version: o3\n"),                     # short name under a non-model key
+    ("config.yaml", "model: my-finetune\n"),              # not a known model pattern
+])
+def test_unquoted_text_that_is_not_a_model_choice(tmp_path, name, content):
+    assert detect(write(tmp_path / name, content)) == []
+
+
+def test_config_model_already_there_is_not_new(tmp_path):
+    env = tmp_path / ".env"
+    env.write_text("OPENAI_MODEL=gpt-4o-mini\n")
+    assert detect(write(env, "OPENAI_MODEL=gpt-4o-mini\nLOG_LEVEL=debug\n")) == []

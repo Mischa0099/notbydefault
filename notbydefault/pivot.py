@@ -20,7 +20,10 @@ PIVOT_PHRASES = [
     r"\breplac(?:e|ing)\b", r"rather than", r"\bgo with\b", r"\bmigrat(?:e|ing) (?:to|from|off)",
     r"\bmove (?:to|off|away from)\b", r"\bchange (?:to|from)\b", r"\bswap\b", r"\bditch\b",
     r"\bscrap\b", r"get rid of", r"\bno longer\b", r"\bforget (?:about )?(?:the|our)\b",
+    r"\bgoing with\b", r"\bfrom now on\b",
 ]
+# "..., not Mongo": a negated stack term is a change of direction too (checked against the terms)
+NOT_TERM_RX = re.compile(r"\bnot (?:the |our |use |using )?([\w.@/-]+)", re.IGNORECASE)
 PIVOT_RX = re.compile("|".join(PIVOT_PHRASES), re.IGNORECASE)
 
 CHOICES = [  # (status, phrases that answer "switch anyway / adjust / keep plan")
@@ -43,21 +46,85 @@ def stack_terms(graph_labels: list[str] | None = None) -> list[str]:
     names = {label for label, _ in KNOWN_SERVICES.values()}
     names |= {p.rstrip("-/") for p, _ in MODEL_PROVIDERS if len(p.rstrip("-/")) > 2}
     names |= {"openai", "anthropic", "gemini", "groq", "mistral", "llama", "claude", "gpt",
-              "postgres", "mysql", "sqlite", "dynamo", "aws", "gcp", "azure", "vertex"}
+              "postgres", "mysql", "sqlite", "dynamo", "aws", "gcp", "azure", "vertex",
+              # common short names people type
+              "mongo", "postgresql", "mariadb", "firestore", "dynamodb"}
     names |= {l for l in (graph_labels or []) if l}
     return sorted(names, key=len, reverse=True)
 
 
-def prefilter(prompt: str, terms: list[str] | None = None) -> list[str]:
-    """Change-of-direction phrases, but only in prompts about the stack; [] means no LLM call."""
-    phrases = [m.group(0) for m in PIVOT_RX.finditer(prompt or "")]
-    if not phrases:
+# A change of plan with no stack word: a new deadline or scope ("we now need this by Friday").
+DAYS = r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|tomorrow|tonight"
+PLAN_CHANGE_RX = re.compile(
+    rf"\bdeadline\b|\b(?:by|before|until)\s+(?:{DAYS}|next \w+|(?:the )?end of \w+)\b|"
+    r"\bwithin\s+\d+\s*(?:days?|weeks?|months?)\b|\bnow need\b|"
+    r"\b(?:change of plans?|plans? (?:have |has )?changed|new plan)\b", re.IGNORECASE)
+TIME_SPAN = re.compile(r"\b(\d+)[\s-]*(day|week|month)s?\b", re.IGNORECASE)
+PLAN_STOP = {
+    "the", "and", "for", "with", "our", "this", "that", "from", "into", "are", "was", "will",
+    "can", "should", "must", "need", "now", "new", "use", "all", "any", "per", "not", "but",
+    "small", "large", "team", "size", "expected", "users", "user", "calls", "call", "month",
+    "monthly", "week", "weeks", "day", "days", "scenario", "demo", "assumption", "app", "api",
+    "build", "building", "make", "add", "get", "set",
+}
+
+
+def plan_terms(labels: list[str]) -> tuple[set[str], bool]:
+    """Distinctive words of the recorded goals/requirements/constraints, and whether any of
+    them sets a time span (a deadline the prompt could change)."""
+    words = set()
+    has_span = False
+    for label in labels or []:
+        has_span |= bool(TIME_SPAN.search(label))
+        for w in re.findall(r"[a-z][a-z0-9]+", label.lower()):
+            if len(w) >= 3 and w not in PLAN_STOP:
+                words.add(w)
+    return words, has_span
+
+
+PLAN_WINDOW = 40   # characters after a change phrase where the goal word must appear
+
+
+def plan_overlap(prompt: str, plan: list[str] | None, after: list[int] | None = None) -> list[str]:
+    """Why the prompt touches a recorded goal/constraint: a new deadline/time span when the
+    plan has one, or a distinctive plan word right after a change phrase ("forget the 2-week
+    MVP"); `after` = end offsets of those phrases. A plan word elsewhere doesn't count: the
+    product's own nouns ("notes") are in ordinary prompts all the time."""
+    if not plan:
         return []
-    low = prompt.lower()
-    if STACK_WORDS.search(prompt) or any(
-            re.search(rf"(?<![\w]){re.escape(t.lower())}(?![\w])", low)
-            for t in (terms or stack_terms())):
+    words, has_span = plan_terms(plan)
+    text = (prompt or "").lower()
+    hits = set()
+    for end in after or []:
+        window = text[end:end + PLAN_WINDOW]
+        hits |= words & set(re.findall(r"[a-z][a-z0-9]+", window))
+        if has_span and TIME_SPAN.search(window):
+            hits.add("timeline")
+    if has_span and PLAN_CHANGE_RX.search(prompt or ""):
+        hits.add("timeline")
+    return sorted(hits)
+
+
+def prefilter(prompt: str, terms: list[str] | None = None,
+              plan: list[str] | None = None) -> list[str]:
+    """Change-of-direction phrases in prompts about the stack, or a change of plan (deadline,
+    scope) in prompts that touch a recorded goal/constraint (`plan` = their labels).
+    [] means no LLM call."""
+    terms = terms or stack_terms()
+    low = (prompt or "").lower()
+    lowered = {t.lower() for t in terms}
+    matches = list(PIVOT_RX.finditer(prompt or ""))
+    phrases = [m.group(0) for m in matches]
+    phrases += [m.group(0) for m in NOT_TERM_RX.finditer(prompt or "")
+                if m.group(1).lower().rstrip(".,;:!?") in lowered]
+    if phrases and (STACK_WORDS.search(prompt) or any(
+            re.search(rf"(?<![\w]){re.escape(t.lower())}(?![\w])", low) for t in terms)):
         return phrases
+    plan_change = [m.group(0) for m in PLAN_CHANGE_RX.finditer(prompt or "")]
+    if phrases or plan_change:
+        touched = plan_overlap(prompt, plan, [m.end() for m in matches])
+        if touched:
+            return phrases + plan_change + [f"plan: {', '.join(touched)}"]
     return []
 
 
@@ -122,7 +189,8 @@ The developer just wrote:
 >>>
 
 A pivot is a change of direction on something already decided: a different model, provider,
-database, framework, architecture, or dropping a recorded goal or constraint. Ordinary requests
+database, framework, architecture, or dropping or changing a recorded goal, deadline, scope or
+constraint (e.g. a much shorter deadline, or a much bigger product). Ordinary requests
 (fix a bug, add a feature, rename, refactor, explain, "use X instead of Y" for a variable) are
 not pivots.
 
@@ -280,10 +348,19 @@ DEFAULT_TOKENS = (1000, 300)   # per-call assumption when nothing was measured
 OPENROUTER_TTL_S = 24 * 3600
 
 
+# "Gemini 3.8 Flash" / "GPT 4o" as people write them -> catalog-style ids for the price lookup
+SPOKEN_MODEL = re.compile(
+    r"\b(gemini|gpt|claude|llama|grok)\s+(\d[\d.]*o?|opus|sonnet|haiku)"
+    r"((?:\s+(?:flash|pro|lite|mini|nano|opus|sonnet|haiku|\d[\d.]*))*)\b", re.IGNORECASE)
+
+
 def named_models(prompt: str) -> list[str]:
     seen: dict[str, None] = {}
     for m in LOOSE_MODEL.finditer(prompt or ""):
         seen.setdefault(m.group(1).lower().rstrip(".,"), None)
+    for m in SPOKEN_MODEL.finditer(prompt or ""):
+        parts = [m.group(1), m.group(2), *m.group(3).split()]
+        seen.setdefault("-".join(parts).lower().rstrip(".,"), None)
     return list(seen)
 
 
@@ -377,21 +454,25 @@ def price_facts(prompt: str, client, project_dir) -> list[dict]:
     return [p for p in (list_price(m, client, project_dir) for m in named_models(prompt)) if p]
 
 
-def cost_check(graph, project_dir, prices: list[dict], decision_ids: list[int]) -> dict | None:
-    """Projected monthly cost of the model the user wants, against the recorded budget."""
+def cost_check(graph, project_dir, prices: list[dict], decision_ids: list[int],
+               users: float | None = None, budget: float | None = None) -> dict | None:
+    """Projected monthly cost of the model the user wants, against the recorded budget.
+    `users` / `budget` replace the recorded values (a new requirement states them)."""
     if not prices:
         return None
     v = volume(graph)
-    if not (v["users"] and v["calls_per_user"]):
+    users = users or v["users"]
+    if not (users and v["calls_per_user"]):
         return None
+    budget = budget if budget is not None else v["budget"]
     tin, tout, basis = tokens_per_call(graph, project_dir, decision_ids)
-    calls = v["users"] * v["calls_per_user"]
+    calls = users * v["calls_per_user"]
     p = prices[0]
     monthly = calls * (tin * p["in"] + tout * p["out"])
     return {"model": p["model"], "monthly": monthly, "calls": calls, "tokens_in": tin,
-            "tokens_out": tout, "basis": basis, "budget": v["budget"],
+            "tokens_out": tout, "basis": basis, "budget": budget,
             "budget_node": v["budget_node"], "price": p,
-            "over_budget": v["budget"] is not None and monthly > v["budget"]}
+            "over_budget": budget is not None and monthly > budget}
 
 
 def cost_line(c: dict) -> str:
