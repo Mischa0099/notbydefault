@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4P4TJPY136K54SBJME1HGFQ",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/screenshots/costs-dark.png",
+    "docs/screenshots/costs-light.png",
+    "docs/screenshots/decision-claims-dark.png",
+    "docs/screenshots/decision-claims-light.png",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "docs/screenshots/decisions-dark.png",
+    "docs/screenshots/decisions-light.png",
+    "docs/screenshots/evals-dark.png",
+    "docs/screenshots/evals-light.png",
+    "docs/screenshots/graph-dark.png",
+    "docs/screenshots/graph-light.png",
+    "docs/screenshots/overview-dark.png",
+    "docs/screenshots/overview-light.png",
+    "docs/screenshots/timeline-dark.png",
+    "docs/screenshots/timeline-light.png",
+    "scripts/demo_dataset.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 64,
+    "cache_creation_tokens": 73135,
+    "cache_read_tokens": 2406747,
+    "output_tokens": 18609,
+    "api_call_count": 32
+  }
+}

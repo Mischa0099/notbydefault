@@ -1,0 +1,10 @@
+<pasted_content id="07f7">
+Finish scripts/demo_dataset.py. On a throwaway copy of demo-app, make the UI's pages non-empty:
+1. Run resolve #21 (switch to gemini-3.1-flash-lite). Then add the EU data-residency requirement — it should mark #21 needs_review (Gemini has no region guarantee), not stale.
+2. Record one pivot (user asks for a new direction that contradicts a decision).
+3. Run claims #21 (shows the agent's reason split into verdicts).
+4. Run scan (shows the debt score on the overview).
+5. Record agent_reasons on existing decisions so the claim-check receipt isn't empty.
+6. Regenerate every screenshot in docs/screenshots.
+Reproducible as `python scripts/demo_dataset.py`. Print every trace id it creates. Stage, write msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="07f7">

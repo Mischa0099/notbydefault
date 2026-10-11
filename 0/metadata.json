@@ -1,0 +1,68 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4P4TJPY136K54SBJME1HGFQ",
+  "session_id": "034b5fa8-e8a1-40ed-8c31-342bb16af48b",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-11T18:50:27.8119376Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "docs/screenshots/costs-dark.png",
+    "docs/screenshots/costs-light.png",
+    "docs/screenshots/decision-claims-dark.png",
+    "docs/screenshots/decision-claims-light.png",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "docs/screenshots/decisions-dark.png",
+    "docs/screenshots/decisions-light.png",
+    "docs/screenshots/evals-dark.png",
+    "docs/screenshots/evals-light.png",
+    "docs/screenshots/graph-dark.png",
+    "docs/screenshots/graph-light.png",
+    "docs/screenshots/overview-dark.png",
+    "docs/screenshots/overview-light.png",
+    "docs/screenshots/timeline-dark.png",
+    "docs/screenshots/timeline-light.png",
+    "scripts/demo_dataset.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "3d7e76c159bb",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 64,
+    "cache_creation_tokens": 73135,
+    "cache_read_tokens": 2406747,
+    "output_tokens": 18609,
+    "api_call_count": 32
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-11T18:50:27.5831521Z",
+    "agent_lines": 0,
+    "agent_removed": 15,
+    "human_added": 0,
+    "human_modified": 287,
+    "human_removed": 0,
+    "total_committed": 287,
+    "total_lines_changed": 302,
+    "agent_percentage": 4.966887417218543,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 47,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "msg.txt": 39
+      }
+    }
+  ]
+}
