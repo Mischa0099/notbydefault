@@ -112,6 +112,12 @@ def cmd_check(args) -> int:
         return check_model_decision(project, args.decision_id, opts)
 
 
+def cmd_resolve(args) -> int:
+    from notbydefault.resolve import ResolveOptions, resolve
+    opts = ResolveOptions(apply=args.apply, yes=args.yes, live=args.live, max_cost=args.max_cost)
+    return resolve(Path(args.project), args.decision_id, opts)
+
+
 def cmd_label(args) -> int:
     from notbydefault.fit.labels import label
     return label(Path(args.project).resolve(), args.decision_id, n=args.n)
@@ -336,6 +342,23 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--expand-rounds", type=int, default=1,
                    help="times to add 4 inputs when the verdict is too close to call (default 1)")
     p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("resolve", help="take one decision from its verdict to a reviewed branch "
+                                       "(dry run unless --apply)")
+    p.add_argument("decision_id", type=int)
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--apply", action="store_true",
+                   help="change files: branch nbd/<id>-<slug>, edit, test, verify, record "
+                        "(never commits without asking, never pushes)")
+    p.add_argument("--yes", "-y", action="store_true",
+                   help="approve the recommendation (and a needed fit check) without asking; "
+                        "the commit is still asked for")
+    p.add_argument("--live", action="store_true",
+                   help="verify by calling the new model (default: the fit check's response "
+                        "cache, no requests)")
+    p.add_argument("--max-cost", type=float, default=1.00,
+                   help="USD cap for a fit check or --live verification (default 1.00)")
+    p.set_defaults(func=cmd_resolve)
 
     p = sub.add_parser("affected", help="find every file/function a decision affects (Entire Graph)")
     p.add_argument("decision_id", type=int, nargs="?", help="default: every decision")

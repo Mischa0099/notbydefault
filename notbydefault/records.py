@@ -130,6 +130,16 @@ def summary_block(project: Path, graph, d: dict) -> list[str]:
     lines += [f"- `{describe(e)}`: {e.get('via', '')}" for e in entries] or ["- none recorded"]
     lines.append("")
 
+    res = data.get("resolution")
+    if res:
+        lines += ["### Resolution", "",
+                  f"- {res['at']}: `{res['from']}` -> `{res['to']}` on branch `{res['branch']}`",
+                  f"- Call sites changed: {', '.join(f'`{s}`' for s in res['sites'])}"]
+        lines += [f"- Left alone: {', '.join(f'`{s}`' for s in res['left_alone'])}"] \
+            if res.get("left_alone") else []
+        lines += [f"- Project tests: {res['tests']}; verifiers on the new code: {res['verifiers']}",
+                  f"- Trace: `{res.get('trace_id') or 'not exported'}`", ""]
+
     history = data.get("history") or []
     if history:
         lines += ["### Status history", ""]
