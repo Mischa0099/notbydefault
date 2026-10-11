@@ -118,6 +118,12 @@ def cmd_resolve(args) -> int:
     return resolve(Path(args.project), args.decision_id, opts)
 
 
+def cmd_export_costs(args) -> int:
+    from notbydefault.costs import export
+    return export(Path(args.project), Path(args.out), args.checks_per_month,
+                  args.projects_per_customer)
+
+
 def cmd_label(args) -> int:
     from notbydefault.fit.labels import label
     return label(Path(args.project).resolve(), args.decision_id, n=args.n)
@@ -359,6 +365,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-cost", type=float, default=1.00,
                    help="USD cap for a fit check or --live verification (default 1.00)")
     p.set_defaults(func=cmd_resolve)
+
+    p = sub.add_parser("export-costs",
+                       help="write business/costs.csv and costs.md from the graph and results "
+                            "(no model calls)")
+    p.add_argument("--project", default=".", help="project dir (default: current dir)")
+    p.add_argument("--out", default="business", help="output folder (default: ./business)")
+    p.add_argument("--checks-per-month", type=float, default=4.0,
+                   help="ASSUMPTION: fit checks per project per month (default 4)")
+    p.add_argument("--projects-per-customer", type=float, default=1.0,
+                   help="ASSUMPTION: projects per customer (default 1)")
+    p.set_defaults(func=cmd_export_costs)
 
     p = sub.add_parser("affected", help="find every file/function a decision affects (Entire Graph)")
     p.add_argument("decision_id", type=int, nargs="?", help="default: every decision")
