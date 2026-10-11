@@ -40,3 +40,27 @@ message (no Co-Authored-By line) to msg.txt and show it to me.
 ---
 
 type msg.txt
+
+---
+
+<pasted_content id="3ec3">
+Fix for v2, in this order, then stop:
+1. R2: the requirement-to-checks step must only create a constraint the
+   requirement text actually states (no data_residency from "HIPAA"). Add a
+   test that HIPAA alone never makes anything stale.
+2. R1: in `require`, compute cost facts (list price x recorded volume, the
+   same math Pivot Check uses) so budget cuts and user growth mark a model
+   decision stale when it provably exceeds the budget; pass these facts to
+   the judge.
+3. D4 + D3: one shared check "already decided in this project": skip
+   interrupting when the model/service is already a reviewed/accepted
+   decision or already used elsewhere in the project (count it as seen).
+4. Fix test_hook_asks_and_records_decision to expect the quoted path.
+5. P1: widen the pivot pre-filter modestly ("going with", "from now on",
+   "not X", common aliases like Mongo/Postgres/Gemini <version>), and report
+   how LLM calls per ordinary prompt change.
+Then run `notbydefault eval --version v2` and produce a before/after table
+v1 vs v2 for every metric, with trace ids. List remaining failures as known
+limitations. Full test suite must pass. Do not commit; write the commit
+message (no Co-Authored-By line) to msg.txt and show it to me.
+</pasted_content id="3ec3">
