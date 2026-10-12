@@ -171,7 +171,7 @@ def providers(p: Path, offline: bool):
     """The project's ProviderSet, answering from the response cache; every call that would reach
     a provider is printed with its step, and refused when offline."""
     from notbydefault.fit.providers import ProviderSet, load_catalog
-    from notbydefault.llm import LLMError
+    from notbydefault.llm import OfflineCacheMiss
 
     class Logged(ProviderSet):
         step = ""
@@ -179,7 +179,7 @@ def providers(p: Path, offline: bool):
         def _transport(self, provider: str):        # only reached on a cache miss
             if offline:
                 print(f"[live call skipped: --offline] step {self.step!r} -> {provider}")
-                raise LLMError(f"--offline: no cached answer, live {provider} call skipped")
+                raise OfflineCacheMiss(f"--offline: no cached answer, live {provider} call skipped")
             print(f"[live call] step {self.step!r} -> {provider}")
             return super()._transport(provider)
 

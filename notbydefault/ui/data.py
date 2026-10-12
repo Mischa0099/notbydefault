@@ -362,6 +362,11 @@ def decision_view(project: Path, snap: Snapshot, did: int) -> dict | None:
                "checks": (results.get("verifiers") or {}).get("checks") or [],
                "stopped": results.get("stopped")}
         fit["steps"], fit["journal"] = journal_view(results.get("journal") or [])
+        from notbydefault.fit.report import net_saving_line
+        by_setup = {(s.get("model"), s.get("setup")): s for s in results["stats"].values()}
+        cur, rec = (by_setup.get(tuple(v.get(k) or ())) or {} for k in ("reference", "recommended"))
+        fit["net_saving"] = net_saving_line(cur.get("monthly_cost"), rec.get("monthly_cost"),
+                                            results.get("spent")) if rec is not cur else ""
     record = existing_path(project, d)
     record_rel = rel_to(project, str(record)) if record else None
     sections = {"Caveats": [], "Assumptions and evidence": []}

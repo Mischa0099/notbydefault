@@ -1,40 +1,70 @@
 # NotByDefault
 
-## Entire integration
+**Prove the choice. Recheck the decision.**
 
-NotByDefault reads Entire for code and history, and writes decision records that Entire
-checkpoints with your commits. Every Entire call degrades gracefully: when the CLI, a plugin,
-login or a mirrored repo is missing, the command falls back (and says so) instead of failing.
+AI coding agents pick models, databases and SDKs by default and give a reason. NotByDefault checks whether that reason is true on your project's own data, records the evidence, and reopens the decision when a requirement, price or fact changes.
 
-| command | what it does | Entire used |
-|---|---|---|
-| `python -m notbydefault affected [id] --project P` | every file and function using a decision's model/service, stored as `code` nodes with `affects` edges | `entire graph symbols` / `edges` (falls back to the files the agent touched) |
-| `python -m notbydefault require P "<requirement>"` | two lists: **stale** (a documented fact conflicts) and **needs review** (depends on deployment, or only the model's judgement) | Graph for the affected code |
-| `python -m notbydefault records [id] --project P` | writes/updates `decisions/NNNN-<slug>.md` (why, evidence, rejected alternatives, caveats, affected code, history); `check`, `require` and accepted pivots do this automatically | Brain, if `entire-brain` is installed |
-| `python -m notbydefault why "<question>" --project P [--llm]` | answers only from recorded facts, each cited (decision record, evidence, checkpoint/session/commit, code location); says "no recorded reason" otherwise | `entire search`, else `entire checkpoint list` + `git log`; Graph |
-| `python -m notbydefault scout <id> --project P` | edge cases the agent discussed in sessions that touched the code, saved as *suggested* cases in `.notbydefault/suggested/<id>.jsonl` | `entire checkpoint list` / `explain --transcript` |
-| `python -m notbydefault checkpoints <id> --project P` | the `entire checkpoint list` row and link for the commit that added the decision's record | `entire checkpoint explain --commit` |
+> No decision without a why.
 
-The PreToolUse hook adds a briefing of at most 4 lines (related past decisions, rejected
-alternatives, history, reusable code, each with a source id). It reads only the graph and
-`.notbydefault/entire_cache.json`, then refreshes that cache in a detached process; `check`
-shows the full briefing after a live refresh.
+## Example
 
-### Checkpoint links
+An agent picked `openai/gpt-oss-120b` for an action-items endpoint because it was "cost-effective, strong at extraction, widely used". On the project's 12 cases it scored 10/12 at $407/mo, over the $375 budget. `gemini-3.1-flash-lite` scored 11/12 within budget. `notbydefault resolve 21` switched to it on a branch, with generated tests going from 0/12 to 12/12, and wrote the PR.
 
-A decision record lands in the Entire checkpoint of the commit that adds it. Its page is
+When the requirement "data must stay in the EU" was added, that decision was flagged **needs_review** (no documented regional guarantee) and an older Groq decision **stale** (Groq documents US-only). Stale means a known fact breaks it; needs_review means a human should judge.
 
-    https://entire.io/gh/Mischa0099/notbydefault/commit/<FULL_SHA>
+Trace in neatlogs: `4bcff389ab979638e4ffa7ee88619318`
 
-where `<FULL_SHA>` is the full 40-character commit SHA (`git log --diff-filter=A --format=%H --
-decisions/<record>.md`, or `python -m notbydefault checkpoints <id>`). For example, the commit
-that added `demo-app/decisions/0001-ai-model-openai-gpt-oss-120b.md` (checkpoint
-`01M4KMWR0G2BHVEMNG9MMHHP6G`):
-https://entire.io/gh/Mischa0099/notbydefault/commit/35c61621951e0317126ed33c88fdd99954608157
+## How it works
 
-### Entire Brain
+1. **Catch.** A Claude Code `PreToolUse` hook spots a decision when the agent writes a model name, installs an SDK or edits a manifest. It runs in under 300 ms and never blocks the agent.
+2. **Record.** The decision, the agent's stated reason and the code it touches go into a decision graph (SQLite, stored with the repo).
+3. **Check the reasons.** `claims` splits the reason into cost, quality, latency, compliance and popularity claims, and gives each a verdict with a source. "Widely used" is never evidence for your project.
+4. **Check the choice.** `check` runs several candidates on your own cases. Verifiers catch bad outputs, two judges from different model families score them, and confidence intervals flag runs that are too close to call.
+5. **Act.** `resolve` applies the winner on a branch (`nbd/<id>-<slug>`), edits only that decision's call sites, generates tests from past failures and writes the PR text. It never touches main or pushes.
+6. **Watch.** Each decision stores its assumptions: budget, volume, prices, data region, requirements. `watch` and `require` reopen the affected decisions when any of them change.
+7. **Review.** `ui` shows the decision graph, a receipt per decision with its full evidence, a change timeline, eval results and costs. `scan` scores the repo's decision debt (the demo repo scores 14).
 
-Not in the Entire plugin index as of entire 0.11.4 (`entire plugin search brain` finds nothing).
-If you have it, install it with `entire plugin install <its repository URL or a local
-entire-brain executable>`, then run `python -m notbydefault records --project P`. NotByDefault
-only calls a Brain subcommand that the installed plugin's own `--help` documents.
+## Commands
+
+| Command | What it does |
+|---|---|
+| `notbydefault check <id>` | Fit-check a decision on your own cases |
+| `notbydefault claims <id>` | Verdict on each claim in the agent's reason |
+| `notbydefault resolve <id>` | Apply the winner on a branch, with tests and PR text |
+| `notbydefault require <project> "<text>"` | Add a requirement; mark decisions stale or needs_review |
+| `notbydefault watch` | Reopen decisions whose assumptions changed |
+| `notbydefault why "<question>"` | Answer from recorded decisions only, with sources |
+| `notbydefault scan` | Decision debt: unchecked choices, false claims, expired assumptions |
+| `notbydefault ui` | Web UI with the live decision graph |
+
+## Quickstart
+
+```bash
+pip install -e .
+cp .env.example .env         # add GROQ_API_KEY and GEMINI_API_KEY
+notbydefault init demo-app
+notbydefault check 21 --project demo-app
+notbydefault ui --project demo-app
+```
+
+To rebuild the full demo scenario on a throwaway copy:
+
+```bash
+python scripts/demo_dataset.py --out .demo-dataset/demo-app --offline
+```
+
+## Results
+
+On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions, and pivot detection from 0.67 to 1.00. 460 tests, no network.
+
+## Sponsor tools
+
+- **neatlogs:** every model call, verifier and hook traced as spans with tokens and cost.
+- **Entire:** Graph finds the code each decision affects; checkpoints link each decision to the agent session that made it.
+- **cfo.ai:** pricing ($49/team/month hypothesis) and a 12-month runway plan in `business/plan.md`.
+
+Model calls go to Groq and Google AI Studio; with `NEATLOGS_API_KEY` set, prompts and outputs are also exported to neatlogs. When `NEATLOGS_API_KEY` is not set, no spans leave the machine.
+
+## Submission
+
+neatHack, October 10-12, 2026 · solo, [@Mischa0099](https://github.com/Mischa0099) · Demo video: _link after upload_

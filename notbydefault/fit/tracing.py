@@ -43,6 +43,27 @@ def _check_focus(focus_area: str) -> str:
     return focus_area
 
 
+# a model call that fails in one of these ways is an expected code path the caller handles
+# (skip, stop and resume, swap, fall back), so its span ends OK with nbd.outcome; only other
+# exceptions mark a span ERROR
+HANDLED_OUTCOMES = {"offline_cache_miss", "daily_limit", "preflight_unavailable", "judge_fallback"}
+
+
+def handled_outcome(error: BaseException, before: dict) -> str | None:
+    """The HANDLED_OUTCOMES entry a failed model call stands for, or None for a real failure.
+    `before` is the call's span attributes (its role, and for a preflight probe the role probed)."""
+    outcome = getattr(error, "outcome", None)
+    if outcome in HANDLED_OUTCOMES:
+        return outcome
+    from notbydefault.llm import ModelUnavailable
+    if isinstance(error, ModelUnavailable) and before.get("notbydefault.role") == "preflight":
+        # preflight swaps an unavailable model; for the judge it falls back to a second judge,
+        # a freed candidate, or reference-only scoring
+        return ("judge_fallback" if before.get("notbydefault.for_role") in ("judge", "judge2")
+                else "preflight_unavailable")
+    return None
+
+
 def current_focus(entry: dict) -> str:
     """The focus_area the code gives this journal entry today (a saved one may predate a retag)."""
     return RETAGGED.get((entry.get("name"), entry.get("focus_area")), entry.get("focus_area"))
@@ -359,10 +380,17 @@ class NeatlogsTracer(Tracer):
         try:
             result = fn()
         except BaseException as e:      # the model call's own error: recorded, re-raised as is
+            outcome = handled_outcome(e, before)
+
             def failed():
                 from opentelemetry.trace import StatusCode
-                span.set_status(StatusCode.ERROR, str(e)[:500])
-                span.record_exception(e)
+                if outcome:             # expected and handled by the caller: not an error
+                    span.set_attribute("nbd.outcome", outcome)
+                    span.set_attribute("nbd.outcome_reason", str(e)[:500])
+                    span.set_status(StatusCode.OK)
+                else:
+                    span.set_status(StatusCode.ERROR, str(e)[:500])
+                    span.record_exception(e)
                 span.end()
             self._guard("llm span", failed)
             raise

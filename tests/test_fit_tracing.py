@@ -261,3 +261,82 @@ def test_flush_inside_the_root_waits_for_it_so_closing_attributes_export(tmp_pat
         assert flushed == []           # not yet: the root is still open
     assert flushed == [True]
     assert t.journal[-1]["name"] == "root_summary" and t.journal[-1]["nbd.stopped_early"] is True
+
+# --- expected outcomes end OK with nbd.outcome; only real failures are ERROR ------------------
+
+def _failed_call(error, **before):
+    """One model call that raises `error`, traced to memory; returns its finished span."""
+    import neatlogs
+    exporter, t = memory()
+    with t.root("notbydefault.check", {}):
+        try:
+            t.llm("notbydefault.model_call", lambda: (_ for _ in ()).throw(error),
+                  before={"llm.model_name": "groq:m", **before}, after=lambda r: {})
+        except BaseException as e:
+            assert e is error                       # the caller still gets the exception
+    span = next(s for s in exporter.get_finished_spans() if s.name == "notbydefault.model_call")
+    neatlogs.shutdown(timeout_millis=1000)
+    return span
+
+
+def _assert_handled(span, outcome):
+    from opentelemetry.trace import StatusCode
+    assert outcome in tracing.HANDLED_OUTCOMES
+    assert span.status.status_code == StatusCode.OK, span.status
+    assert span.attributes["nbd.outcome"] == outcome and span.attributes["nbd.outcome_reason"]
+    assert not span.events                          # no exception recorded
+
+
+def test_offline_cache_miss_span_is_ok():
+    from notbydefault.llm import OfflineCacheMiss
+    span = _failed_call(OfflineCacheMiss("--offline: no cached answer"),
+                        **{"notbydefault.role": "candidate"})
+    _assert_handled(span, "offline_cache_miss")
+
+
+def test_daily_limit_span_is_ok():
+    from notbydefault.llm import DailyLimitReached
+    span = _failed_call(DailyLimitReached("gemini", "m", "quota exceeded", "at midnight"),
+                        **{"notbydefault.role": "judge"})
+    _assert_handled(span, "daily_limit")
+
+
+def test_preflight_unavailable_span_is_ok():
+    from notbydefault.llm import ModelUnavailable
+    span = _failed_call(ModelUnavailable("groq", "m", "limit: 0"),
+                        **{"notbydefault.role": "preflight", "notbydefault.for_role": "candidate"})
+    _assert_handled(span, "preflight_unavailable")
+
+
+def test_judge_fallback_span_is_ok():
+    from notbydefault.llm import ModelUnavailable
+    span = _failed_call(ModelUnavailable("gemini", "j", "HTTP 404"),
+                        **{"notbydefault.role": "preflight", "notbydefault.for_role": "judge"})
+    _assert_handled(span, "judge_fallback")
+
+
+def test_unhandled_failures_stay_error():
+    from opentelemetry.trace import StatusCode
+    from notbydefault.llm import LLMError, ModelUnavailable
+    for error, role in ((LLMError("HTTP 500 after 3 retries"), "candidate"),
+                        (ModelUnavailable("groq", "m", "HTTP 404"), "candidate")):   # mid-run
+        span = _failed_call(error, **{"notbydefault.role": role})
+        assert span.status.status_code == StatusCode.ERROR and "nbd.outcome" not in span.attributes
+
+
+def test_a_check_with_a_preflight_swap_exports_no_error_spans(project):  # noqa: F811
+    import neatlogs
+    from opentelemetry.trace import StatusCode
+    from conftest import FakeTransport
+    from notbydefault.fit.run import cache_dir
+    p, did = project
+    exporter, t = memory()
+    client = make_client(cache_dir=cache_dir(p), transport=FakeTransport(
+        unavailable={"gemini-3.5-flash-lite"}))
+    code = check_model_decision(p, did, CheckOptions(yes=True, calls_per_user=30, workers=2),
+                                client=client, tracer=t, out=lambda _: None)
+    assert code == 0
+    spans = exporter.get_finished_spans()
+    assert any(s.attributes.get("nbd.outcome") == "preflight_unavailable" for s in spans)
+    assert [s.name for s in spans if s.status.status_code == StatusCode.ERROR] == []
+    neatlogs.shutdown(timeout_millis=1000)

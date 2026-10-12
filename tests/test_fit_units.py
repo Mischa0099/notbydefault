@@ -491,3 +491,12 @@ def test_cache_tolerates_concurrent_writes_of_the_same_key(tmp_path):
         list(pool.map(lambda i: cache.put(key, {"text": "same", "i": 0}), range(64)))
     assert cache.get(key)["text"] == "same"
     assert not list(tmp_path.rglob("*.tmp"))
+
+def test_net_saving_line_from_the_unrounded_numbers():
+    from notbydefault.fit.report import net_saving_line
+    # decision #21's demo fit check, as stored in its results file
+    assert net_saving_line(407.35499999999996, 345.075, 0.0375157) == (
+        "Net saving: $407.35/mo → $345.07/mo = $62.28/mo saved. Check cost once at "
+        "$0.0375 (list). First-month ROI: $62.24.")
+    assert net_saving_line(300.0, 345.07, 0.04) == ""        # recommended costs more: no saving
+    assert net_saving_line(None, 345.07, 0.04) == ""

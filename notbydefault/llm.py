@@ -19,6 +19,11 @@ class LLMError(RuntimeError):
     pass
 
 
+class OfflineCacheMiss(LLMError):
+    """Offline, and the response cache has no answer: the call is skipped, by design."""
+    outcome = "offline_cache_miss"     # tracing.HANDLED_OUTCOMES: its span ends OK, not ERROR
+
+
 class ModelUnavailable(LLMError):
     """The model can't be used with this key at all (HTTP 404/403, or a free-tier limit of 0)."""
 
@@ -29,6 +34,7 @@ class ModelUnavailable(LLMError):
 
 class DailyLimitReached(RuntimeError):
     """A quota that won't reset within minutes (daily limit, or not on the free tier)."""
+    outcome = "daily_limit"            # the run stops cleanly and resumes from the cache
 
     def __init__(self, provider: str, model: str, detail: str, resets: str = ""):
         self.provider, self.model, self.detail, self.resets = provider, model, detail, resets

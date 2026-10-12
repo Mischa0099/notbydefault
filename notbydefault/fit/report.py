@@ -240,6 +240,24 @@ def latency_tradeoff(stats: dict, verdict: Verdict) -> str:
             + "); set a latency requirement (`check --max-latency SECONDS`) if that matters.")
 
 
+def net_saving_line(today: float | None, recommended: float | None,
+                    check_cost: float | None) -> str:
+    """What switching saves a month, against what the check cost; "" when it saves nothing."""
+    if today is None or recommended is None or check_cost is None or recommended >= today:
+        return ""
+    saved = today - recommended
+    return (f"Net saving: ${today:,.2f}/mo → ${recommended:,.2f}/mo = "
+            f"${saved:,.2f}/mo saved. Check cost once at ${check_cost:.4f} (list). "
+            f"First-month ROI: ${saved - check_cost:,.2f}.")
+
+
+def stats_net_saving(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
+    c, rec = stats.get(verdict.reference), stats.get(verdict.recommended)
+    if not c or not rec or rec.key == c.key:
+        return ""
+    return net_saving_line(c.monthly_cost, rec.monthly_cost, ctx.spent)
+
+
 def summary_text(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
     c = stats[verdict.reference]
     parts = [f"Decision #{ctx.decision_id} uses {ctx.literal} ({ctx.chosen})"
@@ -280,13 +298,16 @@ def summary_text(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
 def render(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
     rows = table_rows(stats, ctx)
     best = stats.get(ctx.best_quality) if ctx.best_quality else None
+    saving = stats_net_saving(stats, verdict, ctx)
     lines = [f"NotByDefault check: decision #{ctx.decision_id} ({ctx.literal})"
              + (f"  [{FREE_TIER_LABEL}]" if ctx.free_tier else "")
              + ("  [REFERENCE-ONLY: no judge]" if ctx.judge_mode == "reference_only" else "")
              + (f"  [judge: {ctx.judge}, single-provider run]"
                 if ctx.single_provider and ctx.judge else ""),
              "",
-             summary_text(stats, verdict, ctx), "", FIT_LINE, text_table(rows), ""]
+             summary_text(stats, verdict, ctx), "",
+             *([saving, ""] if saving else []),
+             FIT_LINE, text_table(rows), ""]
     if ctx.has_references:
         lines += ["Recommendations:",
                   f"  1. Cheapest setup that meets the bar: {stats[verdict.recommended].name}",
@@ -335,6 +356,9 @@ def write_decision_record(project: Path, stats: dict, verdict: Verdict,
         "## Setups tested", "", FIT_LINE, "", markdown_table(table_rows(stats, ctx)), "",
         "## Verdict", "", verdict.summary, "",
     ]
+    saving = stats_net_saving(stats, verdict, ctx)
+    if saving:
+        body += [saving, ""]
     if ctx.has_references:
         best = stats.get(ctx.best_quality) if ctx.best_quality else None
         body += [f"1. Cheapest setup that meets the bar: `{rec.name}`",

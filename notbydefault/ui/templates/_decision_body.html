@@ -54,6 +54,7 @@
     </ol>
     {% endif %}
     <p>{{ f.verdict.summary }}</p>
+    {% if f.net_saving %}<p class="small net-saving">{{ f.net_saving }}</p>{% endif %}
     {% if f.verdict.bar %}<p class="small muted">Bar: {{ f.verdict.bar }}.</p>{% endif %}
     {% if f.stopped %}<p class="pill bad">stopped early at --max-cost</p>{% endif %}
     <hr>
