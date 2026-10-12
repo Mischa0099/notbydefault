@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4Q8JY29Y5X9071QYJC1Q5BW",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "ARCHITECTURE.md",
+    "README.md",
+    "business/plan.md",
+    "notbydefault/fit/report.py",
+    "notbydefault/fit/run.py",
+    "notbydefault/fit/tracing.py",
+    "tests/test_fit_check.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 382,
+    "cache_creation_tokens": 729831,
+    "cache_read_tokens": 41587765,
+    "output_tokens": 135684,
+    "api_call_count": 191
+  }
+}
