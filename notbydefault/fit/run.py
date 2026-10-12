@@ -17,7 +17,7 @@ from notbydefault.fit.evaluate import ALONE, VERIFIED, BudgetExceeded, Caller, S
 from notbydefault.fit.report import ReportContext, render, write_decision_record
 from notbydefault.fit.stats import (Verdict, decide, decide_with_references, judge_agreement,
                                     parse_number, project_monthly, summarize)
-from notbydefault.fit.tracing import Tracer, make_tracer
+from notbydefault.fit.tracing import Tracer, make_tracer, step_strip
 from notbydefault.graph import Graph, find_affected_code
 from notbydefault.llm import LLMError, ModelUnavailable
 
@@ -551,6 +551,7 @@ def check_model_decision(project: Path, decision_id: int, opts: CheckOptions, cl
                         claims["trace_id"] = tracer.trace_id
                         claims_mod.store(project, g, decision_id, claims)
         out("")
+        rctx.steps = step_strip(getattr(tracer, "journal", []))
         out(render(stats, verdict, rctx))
         if claims:
             from notbydefault.claims import block_lines

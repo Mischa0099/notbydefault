@@ -516,3 +516,23 @@ def test_header_prints_the_drop_to_no_judge(project):
     assert code == 0
     assert "(freed from the candidates: groq:openai/gpt-oss-20b)" in report
     assert "judge changed: groq:openai/gpt-oss-20b -> none (unavailable: free tier limit: 0" in report
+
+def test_report_prints_the_step_strip_with_focus_areas(project):
+    p, did = project
+    code, report = run(p, did)
+    assert code == 0, report
+    line = next(l for l in report.splitlines() if l.startswith("Steps: "))
+    assert line.startswith("Steps: plan [planning]  →  preflight [tool_use]  →  context [context]")
+    assert "execute [execution]" in line and "record [state]" in line
+    assert "notbydefault.check" not in line
+
+
+def test_step_strip_merges_repeats_and_shows_todays_tag():
+    from notbydefault.fit.tracing import step_strip
+    assert step_strip([
+        {"kind": "step", "name": "notbydefault.check", "focus_area": "execution"},
+        {"kind": "step", "name": "refresh_cache", "focus_area": "planning"},    # saved before retag
+        {"kind": "event", "name": "verdict", "focus_area": "verification"},
+        {"kind": "step", "name": "judge", "focus_area": "verification"},
+        {"kind": "step", "name": "judge", "focus_area": "verification"}]) == \
+        "refresh_cache [execution]  →  judge ×2 [verification]"

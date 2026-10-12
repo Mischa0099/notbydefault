@@ -45,6 +45,7 @@ class ReportContext:
     max_latency_s: float | None = None    # latency requirement (avg seconds per call), if any
     judge_mode: str = "judge"             # "judge" | "reference_only" (no judge was available)
     judge_note: str = ""                  # how the judge was obtained, or why there is none
+    steps: str = ""                       # tracing.step_strip of the run's journal
 
     @property
     def has_references(self) -> bool:
@@ -307,6 +308,7 @@ def render(stats: dict, verdict: Verdict, ctx: ReportContext) -> str:
              "",
              summary_text(stats, verdict, ctx), "",
              *([saving, ""] if saving else []),
+             *([f"Steps: {ctx.steps}", ""] if ctx.steps else []),
              FIT_LINE, text_table(rows), ""]
     if ctx.has_references:
         lines += ["Recommendations:",

@@ -16,7 +16,7 @@ Trace in neatlogs: `4bcff389ab979638e4ffa7ee88619318`
 
 ## How it works
 
-1. **Catch.** A Claude Code `PreToolUse` hook spots a decision when the agent writes a model name, installs an SDK or edits a manifest. It runs in under 300 ms and never blocks the agent.
+1. **Catch.** A Claude Code `PreToolUse` hook spots a decision when the agent writes a model name, installs an SDK or edits a manifest. It targets under 300 ms (p50 under 200 ms; worst case 405 ms under full-suite load) and never blocks the agent.
 2. **Record.** The decision, the agent's stated reason and the code it touches go into a decision graph (SQLite, stored with the repo).
 3. **Check the reasons.** `claims` splits the reason into cost, quality, latency, compliance and popularity claims, and gives each a verdict with a source. "Widely used" is never evidence for your project.
 4. **Check the choice.** `check` runs several candidates on your own cases. Verifiers catch bad outputs, two judges from different model families score them, and confidence intervals flag runs that are too close to call.
@@ -55,14 +55,18 @@ python scripts/demo_dataset.py --out .demo-dataset/demo-app --offline
 
 ## Results
 
-On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions, and pivot detection from 0.67 to 1.00. 472 tests, no network.
+On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions. Pivot recall 0.67 → 1.00 on original cases; 0.5 on held-out cases (v2 and v3). We ship with the lower number visible — held-out is where the next version has to improve. 474 tests, no network.
 
 ## Sponsor tools
 
 - **neatlogs:** every model call, verifier and hook traced as spans with tokens and cost.
   - Model calls go to Groq and Google AI Studio over HTTPS. Your project data (notes, cases, code paths) is sent to those providers as prompts. No calls to Anthropic or OpenAI. When `NEATLOGS_API_KEY` is set, prompts and outputs are also sent to neatlogs. When it's not set, no spans leave the machine.
 - **Entire:** Entire's Graph finds the callers affected by each decision (so `resolve #21` edits `actions.py` but leaves `app.py` alone — decision #13's own evidence rejected Gemini for summaries). Checkpoints link decisions to the agent session that made them.
-- **cfo.ai:** pricing ($49/team/month hypothesis) and a 12-month runway plan in `business/plan.md`.
+- **cfo.ai:** Pricing modeled with Ari (cfo.ai): $49/team/month Starter, $149/month Growth. Revised base case is self-funded through October 2027 under disclosed assumptions. Full plan: `business/plan.md`.
+
+## Business case
+
+NotByDefault reviews AI coding agents' technical choices against the project's own data and checks their stated reasoning, with proposed launch pricing of $49 per team per month. In our demo, one model-selection decision reduced projected inference costs by $62/month while improving benchmark accuracy — enough to cover the subscription if those savings persist. Our revised 12-month plan starts with $5,000 of founder cash, two pre-launch pilot customers at $49, 20% upgrade to $149 Growth in the third paid month, and a staged founder draw ($0 Nov–Apr, $2k/mo May–Oct) — resulting in a self-funded year with ~$5,354 ending cash and $2,789 MRR by October 2027 under disclosed assumptions.
 
 ## Known limitations
 

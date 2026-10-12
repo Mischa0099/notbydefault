@@ -69,6 +69,20 @@ def current_focus(entry: dict) -> str:
     return RETAGGED.get((entry.get("name"), entry.get("focus_area")), entry.get("focus_area"))
 
 
+def step_strip(journal: list[dict]) -> str:
+    """The run's agent steps in order with their focus areas, as the UI's step strip shows them:
+    "plan [planning]  →  judge ×2 [verification]  →  ...". The root span is left out."""
+    steps: list[list] = []
+    for e in journal:
+        if e.get("kind") != "step" or e.get("name") == "notbydefault.check":
+            continue
+        if steps and steps[-1][0] == e["name"]:
+            steps[-1][2] += 1
+        else:
+            steps.append([e["name"], current_focus(e), 1])
+    return "  →  ".join(f"{n}{f' ×{k}' if k > 1 else ''} [{a}]" for n, a, k in steps)
+
+
 class SpanAttrs:
     """Attributes collected while a span runs, set on it when it ends."""
 

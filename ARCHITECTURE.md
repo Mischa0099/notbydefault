@@ -53,8 +53,9 @@ A decision's `data` also carries, when known:
   is recorded as an unreviewed decision linked to the goal, requirements and touched code; the
   user is asked to confirm, with a briefing of at most 4 lines (`briefing.py`: related past
   decisions, rejected alternatives, history, reusable code). A choice the project already made is
-  not asked again. A hook call takes about 60-120 ms (hook.log); Entire lookups run in a
-  detached process.
+  not asked again. A hook call targets under 300 ms end to end, process start included (p50
+  117 ms over 40 standalone runs; worst case 405 ms under full-suite load); the hook's own work
+  is about 60-120 ms (hook.log). Entire lookups run in a detached process.
 - **UserPromptSubmit** (`hooks/user_prompt.py`, `pivot.py`): a regex pre-filter, then one fast
   Groq call confirms a real change of direction; the pivot is recorded with what it would undo
   (conflicting constraints, invalidated decisions, cost at list price) and the user's answer
@@ -140,7 +141,35 @@ project tests for each call site and caller.
 ## Observability, evals, costs
 
 Every run is one neatlogs trace (`fit/tracing.py`): a span per agent step with a `focus_area`, a
-span per model and judge call; journals are kept locally when export fails. `evals.py` measures
+span per model and judge call; journals are kept locally when export fails.
+
+**Focus areas.** Every step, event and call carries one of the eight `FOCUS_AREAS` (planning,
+tool use, state, context, execution, recovery, verification, iteration); `FOCUS_LABELS` gives
+their display names. The check's report prints a step strip (`step_strip`: `plan [planning]  →
+preflight [tool_use]  →  ...`), and the UI shows the same strip on the fit-check evidence, an agent
+journal with one focus area per entry, and an overview row linking each area to the receipt
+section where it shows most (`data.FOCUS_MAP`; a test checks every span listed there is emitted
+with its area). Journals saved before the 2026-10-12 retag carry the old tags; `RETAGGED` maps
+(name, old tag) to today's tag for display only (`current_focus`), and the badge's tooltip keeps
+the recorded one.
+
+**Handled outcomes.** A model call that fails in an expected way the caller handles ends its span
+OK with `nbd.outcome` (and `nbd.outcome_reason`) instead of ERROR, so the dashboard's error rate
+counts real failures only. `HANDLED_OUTCOMES`: `offline_cache_miss` (`llm.OfflineCacheMiss`: offline
+and nothing cached), `daily_limit` (`DailyLimitReached`: the run stops and resumes from the cache),
+`preflight_unavailable` (a preflight probe finds a model unavailable and swaps it) and
+`judge_fallback` (the same for the judge, which falls back to a second judge, a freed candidate or
+reference-only scoring). The exception classes carry their outcome; preflight probes are
+recognised by their role. Any other exception still marks the span ERROR with the exception
+recorded.
+
+**Net saving.** Below the monthly cost comparison, the report, the decision record's verdict, the
+receipt and the resolve PR add one line computed from the results file (`report.net_saving_line`):
+today's and the recommended setup's monthly cost at the assumed volume, the difference, the
+check's list-price spend, and first-month ROI (saving minus that spend), all from unrounded
+values. It is left out when the recommendation saves nothing.
+
+`evals.py` measures
 NotByDefault itself on cases with known answers (detection, pivot, requirements, fit), original
 and held-out, results in `eval/results/`. `costs.py` writes per-decision savings and our own cost
 per check (assumptions labelled) from files only.
@@ -171,6 +200,21 @@ graph ids and the files it wrote. Model calls come from the copy's response cach
 unless `--fresh`); each call that would reach a provider is printed, and `--offline` skips them
 (claims fall back to the keyword split, require to the region the text names, the pivot to the
 seeded record).
+
+## Live demo run
+
+`python scripts/live_demo_run.py` (by hand, never in CI) runs `check 21` on the real demo-app with
+the Groq and Gemini keys from `.env`. By default the response cache is a new empty
+`.notbydefault/cache-live-<timestamp>/`, so every request goes to the providers (the old cache is
+untouched; `--no-use-fresh-cache` reuses it). The cap is `--max-cost 0.10`, raised once to 0.15 when
+the check's own estimate is above 0.10. When a free-tier daily quota stops the check (exit 4) it
+prints the reset time in Pacific and local time and the resume command (`--cache
+cache-live-<timestamp>`); every response so far stays in that folder, so no request is made twice,
+and each attempt's trace id is kept in `<cache>/live-run.json`. When the check finishes it writes
+`demo-live-run.txt`, `live-run trace: <id> ($<cost>)` in `docs/demo.md`, and two lines in the
+decision record: the cost (list price of every response in the live cache, so a resumed run counts
+every day) and "Live run: X requests on Y models across Z calendar days ... Partial trace: ...,
+final trace: ...".
 
 ## Tests
 
