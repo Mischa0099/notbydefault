@@ -303,3 +303,15 @@ Switch to the live-run numbers everywhere. Live winner is gpt-oss-20b + verifier
 
 Full suite serially. Stage, write msg.txt (no Co-Authored-By). Don't commit.
 </pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Two small cleanups:
+
+1. Unify spend to $0.0461 in receipt, net-saving line, README, docs/demo.md, decision record. Add "($0.0461 across two attempts; stop-and-resume saves cached work)" wherever the number appears. Rebuild #21 receipt screenshots.
+
+2. Update business/plan.md's "Unit economics" LLM cost: "$0.0863/customer/mo on live data (down from $0.1148 in the demo dataset)". Note that margins and runway conclusions are unchanged — they were 99.6-99.9% at either number.
+
+Full suite. Stage, msg.txt, don't commit.
+</pasted_content id="2598">
