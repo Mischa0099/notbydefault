@@ -1176,8 +1176,8 @@ def pr_description(r: Resolver) -> str:
               f"first) | {vf['mode']} |",
               f"| project tests | | {r.tests['status']} | {r.tests['command'] or r.tests['summary']} |",
               ""]
-    from notbydefault.fit.report import net_saving_line
-    saving = net_saving_line(cur.get("monthly_cost"), new.get("monthly_cost"), res.get("spent"))
+    from notbydefault.fit.report import check_spend, net_saving_line
+    saving = net_saving_line(cur.get("monthly_cost"), new.get("monthly_cost"), *check_spend(res))
     if saving:
         lines += [saving, ""]
     gs = r._generated_summary()

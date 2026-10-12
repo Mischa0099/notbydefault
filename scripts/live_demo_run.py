@@ -121,7 +121,6 @@ def main() -> int:
     from notbydefault.fit.run import CheckOptions, cache_dir, check_model_decision
     from notbydefault.fit.tracing import make_tracer
     from notbydefault.graph import Graph
-    from notbydefault.records import existing_path
 
     load_env()
     missing = [k for k in KEYS if not os.environ.get(k)]
@@ -215,21 +214,44 @@ def main() -> int:
               + ".")
         return code or 1
 
-    # a live cache holds exactly the requests this live run made, across every attempt
-    entries = cache_entries(cache) if live else []
-    pricing = client.pricing()
-    spent = (sum(pricing.prices[e["model"]].cost(e["input_tokens"], e["output_tokens"])
-                 for e in entries if e.get("model") in pricing.prices)
-             if live else float(results.get("spent") or 0))
-    out(f"spent:     ${spent:.4f} "
-        + (f"(list price of the {len(entries)} live requests in {cache.name}, every attempt)"
-           if live else f"({req.get('made', 0)} provider requests, "
-                        f"{req.get('cache_hits', 0)} answered from the response cache)"))
+    spent = record_live_run(cache if live else None, attempts, trace_id, results_rel,
+                            client.pricing(), out)
+    if not live:
+        out(f"spent:     ${spent:.4f} ({req.get('made', 0)} provider requests, "
+            f"{req.get('cache_hits', 0)} answered from the response cache)")
     out(f"results:   demo-app/{results_rel}")
     REPORT.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"report:    {REPORT.relative_to(REPO)}")
+    return 0
 
-    entry = f"live-run trace: {trace_id} (${spent:.4f})"
+
+def record_live_run(cache: Path | None, attempts: list[dict], trace_id: str, results_rel: str,
+                    pricing, out=print) -> float:
+    """Write a finished live run's evidence: its total spend into the results file
+    (`live_run`, which the report, receipt and PR read), the docs/demo.md line, and the
+    decision record's net-saving, cost and run lines (replaced when already there).
+    `cache` is the live cache, or None when the shared cache was reused. Returns the spend."""
+    from notbydefault.fit.report import net_saving_line, spend_note
+    from notbydefault.graph import Graph
+    from notbydefault.records import existing_path
+
+    results_path = PROJECT / results_rel
+    results = json.loads(results_path.read_text(encoding="utf-8"))
+    # a live cache holds exactly the requests this live run made, across every attempt
+    entries = cache_entries(cache) if cache else []
+    spent = (sum(pricing.prices[e["model"]].cost(e["input_tokens"], e["output_tokens"])
+                 for e in entries if e.get("model") in pricing.prices)
+             if cache else float(results.get("spent") or 0))
+    tries = max(len(attempts), 1)
+    if cache:
+        results["live_run"] = {"spent": round(spent, 6), "attempts": tries,
+                               "requests": len(entries), "cache": cache.name,
+                               "traces": [a["trace_id"] for a in attempts]}
+        results_path.write_text(json.dumps(results, indent=1, default=str), encoding="utf-8")
+        out(f"spent:     {spend_note(spent, tries)}: list price of the {len(entries)} live "
+            f"requests in {cache.name}")
+
+    entry = f"live-run trace: {trace_id} — {spend_note(spent, tries)}"
     doc = DEMO_DOC.read_text(encoding="utf-8") if DEMO_DOC.exists() else "# Demo\n"
     doc = LINE.sub(entry, doc, count=1) if LINE.search(doc) else doc.rstrip("\n") + f"\n\n{entry}\n"
     DEMO_DOC.write_text(doc, encoding="utf-8")
@@ -237,11 +259,11 @@ def main() -> int:
 
     # on free-tier keys the cost is the list price of the requests made, not what was billed
     free_tier = (results.get("pricing") or {}).get("free_tier")
-    notes = [f"Live-run cost: ${spent:.2f} ("
+    notes = [f"Live-run cost: {spend_note(spent, tries)}, "
              + ("list price of real requests" if free_tier else "real spend")
-             + (", fresh cache" if live else ", response cache reused")
-             + ("; free tier, not billed" if free_tier else "") + ")"]
-    if live:
+             + (", fresh cache" if cache else ", response cache reused")
+             + ("; free tier, not billed" if free_tier else "") + "."]
+    if cache:
         models = {e.get("model") for e in entries}
         days = {datetime.fromisoformat(e["at"]).astimezone().date() for e in entries if e.get("at")}
         many = len(days) != 1
@@ -253,15 +275,26 @@ def main() -> int:
         else:
             notes.append(f"Live run: {len(entries)} requests on {len(models)} models {where}. "
                          f"Trace: {trace_id}.")
+    with Graph.for_project(PROJECT) as g:
+        decision = g.get_node(DECISION)
     record = existing_path(PROJECT, decision)
-    if record:
-        text = record.read_text(encoding="utf-8")
-        record.write_text(text.rstrip("\n") + "\n\n" + "\n".join(notes) + "\n", encoding="utf-8")
-        for n in notes:
-            print(f"{record.relative_to(REPO)}: {n}")
-    else:
+    if not record:
         print(f"No decision record for #{DECISION}; not written: " + " / ".join(notes))
-    return 0
+        return spent
+    st = {(s["model"], s["setup"]): s for s in results["stats"].values()}
+    v = results["verdict"]
+    cur, rec = (st.get(tuple(v.get(k) or ())) or {} for k in ("reference", "recommended"))
+    saving = net_saving_line(cur.get("monthly_cost"), rec.get("monthly_cost"), spent, tries)
+    kept = [l for l in record.read_text(encoding="utf-8").rstrip("\n").splitlines()
+            if not l.startswith(("Live-run cost:", "Live run:"))]
+    if saving:
+        kept = [saving if l.startswith("Net saving:") else l for l in kept]
+    while kept and not kept[-1].strip():
+        kept.pop()
+    record.write_text("\n".join(kept) + "\n\n" + "\n".join(notes) + "\n", encoding="utf-8")
+    for n in ([saving] if saving else []) + notes:
+        print(f"{record.relative_to(REPO)}: {n}")
+    return spent
 
 
 if __name__ == "__main__":

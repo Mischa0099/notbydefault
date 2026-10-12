@@ -220,7 +220,10 @@ final trace: ...".
 ### Measured (live run, 2026-10-12)
 
 `check 21` on demo-app, fresh cache, two attempts across a Gemini free-tier quota reset: 71 real
-provider requests on 5 models, $0.0461 at list price (free tiers, $0 billed). Partial trace
+provider requests on 5 models, $0.0461 ($0.0461 across two attempts; stop-and-resume saves cached
+work) at list price (free tiers, $0 billed). The results file keeps that total in `live_run`
+(written by `live_demo_run.py`); the report, receipt and PR read it (`report.check_spend`) instead
+of the finishing attempt's own `spent`. Partial trace
 `56a5915f9768ef65b7f21546bdfceb6a` (stopped by the daily limit, 56 requests), final trace
 `0f65667e9f5c521dfc124c89f188f9ca` (15 requests, 56 from the cache). Verdict: switch. Today's
 `groq:openai/gpt-oss-120b` scores 10/12 (6/8 hard) at $418.04/month, over the $375 budget; the

@@ -362,11 +362,18 @@ def decision_view(project: Path, snap: Snapshot, did: int) -> dict | None:
                "checks": (results.get("verifiers") or {}).get("checks") or [],
                "stopped": results.get("stopped")}
         fit["steps"], fit["journal"] = journal_view(results.get("journal") or [])
-        from notbydefault.fit.report import net_saving_line
+        from notbydefault.fit.report import check_spend, net_saving_line, spend_note
         by_setup = {(s.get("model"), s.get("setup")): s for s in results["stats"].values()}
         cur, rec = (by_setup.get(tuple(v.get(k) or ())) or {} for k in ("reference", "recommended"))
+        spent, attempts = check_spend(results)
         fit["net_saving"] = net_saving_line(cur.get("monthly_cost"), rec.get("monthly_cost"),
-                                            results.get("spent")) if rec is not cur else ""
+                                            spent, attempts) if rec is not cur else ""
+        live = results.get("live_run") or {}
+        fit["spent_text"] = spend_note(spent or 0, attempts)
+        fit["requests_text"] = (f"{live['requests']} live requests"
+                                if live.get("requests") is not None else
+                                f"{fit['requests'].get('made') or 0} requests, "
+                                f"{fit['requests'].get('cache_hits') or 0} cache hits")
     record = existing_path(project, d)
     record_rel = rel_to(project, str(record)) if record else None
     sections = {"Caveats": [], "Assumptions and evidence": []}

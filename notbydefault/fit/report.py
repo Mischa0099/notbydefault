@@ -241,14 +241,36 @@ def latency_tradeoff(stats: dict, verdict: Verdict) -> str:
             + "); set a latency requirement (`check --max-latency SECONDS`) if that matters.")
 
 
+ATTEMPTS = {2: "two", 3: "three", 4: "four"}
+
+
+def spend_note(spent: float, attempts: int = 1) -> str:
+    """ "$0.0461" or, for a check resumed after a stop, "$0.0461 ($0.0461 across two attempts;
+    stop-and-resume saves cached work)"."""
+    if attempts <= 1:
+        return f"${spent:.4f}"
+    return (f"${spent:.4f} (${spent:.4f} across {ATTEMPTS.get(attempts, attempts)} attempts; "
+            "stop-and-resume saves cached work)")
+
+
+def check_spend(results: dict) -> tuple[float | None, int]:
+    """(list-price spend, attempts) of a results file: a live run's total over every attempt
+    (`live_run`, written by scripts/live_demo_run.py) when present, else this attempt's."""
+    live = results.get("live_run") or {}
+    if live.get("spent") is not None:
+        return float(live["spent"]), int(live.get("attempts") or 1)
+    return results.get("spent"), 1
+
+
 def net_saving_line(today: float | None, recommended: float | None,
-                    check_cost: float | None) -> str:
+                    check_cost: float | None, attempts: int = 1) -> str:
     """What switching saves a month, against what the check cost; "" when it saves nothing."""
     if today is None or recommended is None or check_cost is None or recommended >= today:
         return ""
     saved = today - recommended
+    across = spend_note(check_cost, attempts)[len(f"${check_cost:.4f}"):]
     return (f"Net saving: ${today:,.2f}/mo → ${recommended:,.2f}/mo = "
-            f"${saved:,.2f}/mo saved. Check cost once at ${check_cost:.4f} (list). "
+            f"${saved:,.2f}/mo saved. Check cost once at ${check_cost:.4f} (list){across}. "
             f"First-month ROI: ${saved - check_cost:,.2f}.")
 
 

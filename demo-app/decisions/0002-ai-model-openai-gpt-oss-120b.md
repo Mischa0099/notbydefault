@@ -26,7 +26,7 @@ Multi-candidate workload evaluation on your own data. Shared benchmarks are a pr
 
 Cheapest setup that meets the bar: groq:openai/gpt-oss-20b + verifier (<=2 retries), correct on 10/12 cases, 6/8 hard, verifier pass rate 92% [75%-100%], $0.000280/call, $336.48/month. Best quality within the budget: gemini:gemini-3.1-flash-lite, correct on 11/12 cases, 8/8 hard, item F1 0.98, $0.000288/call, $345.07/month.
 
-Net saving: $418.04/mo → $336.48/mo = $81.56/mo saved. Check cost once at $0.0221 (list). First-month ROI: $81.53.
+Net saving: $418.04/mo → $336.48/mo = $81.56/mo saved. Check cost once at $0.0461 (list) ($0.0461 across two attempts; stop-and-resume saves cached work). First-month ROI: $81.51.
 
 1. Cheapest setup that meets the bar: `groq:openai/gpt-oss-20b + verifier (<=2 retries)`
 2. Best quality within the budget: `gemini:gemini-3.1-flash-lite`
@@ -120,5 +120,5 @@ Cheapest setup that meets the bar: groq:openai/gpt-oss-20b + verifier (<=2 retri
 
 <!-- notbydefault:summary:end -->
 
-Live-run cost: $0.05 (list price of real requests, fresh cache; free tier, not billed)
+Live-run cost: $0.0461 ($0.0461 across two attempts; stop-and-resume saves cached work), list price of real requests, fresh cache; free tier, not billed.
 Live run: 71 requests on 5 models in 1 calendar day (quota reset between). Partial trace: 56a5915f9768ef65b7f21546bdfceb6a, final trace: 0f65667e9f5c521dfc124c89f188f9ca.

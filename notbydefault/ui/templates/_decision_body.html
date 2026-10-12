@@ -64,7 +64,7 @@
       <dt>Judges</dt><dd class="mono">{{ f.judges|join(", ") }}{% if f.agreement and f.agreement.n %} · agree exactly {{ f.agreement.exact|pct }}, within 1 pt {{ f.agreement.within_1|pct }}{% endif %}</dd>
       <dt>Verifiers</dt><dd>{{ file(f.verifiers) }} <span class="small muted">{{ f.checks|join(", ") }}</span></dd>
       <dt>Prices</dt><dd class="small">{{ f.pricing_source }}{% if f.free_tier %} · <span class="tag">free tier: list-price estimates</span>{% endif %}</dd>
-      <dt>Spent</dt><dd class="mono">${{ "%.4f"|format(f.spent or 0) }} · {{ f.requests.made or 0 }} requests, {{ f.requests.cache_hits or 0 }} cache hits</dd>
+      <dt>Spent</dt><dd class="mono">{{ f.spent_text }} · {{ f.requests_text }}</dd>
       <dt>Trace</dt><dd>{{ trace(f.trace_id, f.trace_url) }}</dd>
     </dl>
   </div>

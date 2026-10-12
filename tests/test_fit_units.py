@@ -500,3 +500,16 @@ def test_net_saving_line_from_the_unrounded_numbers():
         "$0.0221 (list). First-month ROI: $81.53.")
     assert net_saving_line(300.0, 345.07, 0.04) == ""        # recommended costs more: no saving
     assert net_saving_line(None, 345.07, 0.04) == ""
+
+def test_a_resumed_live_run_reports_its_total_spend_with_the_note():
+    from notbydefault.fit.report import check_spend, net_saving_line, spend_note
+    res = {"spent": 0.0220937, "live_run": {"spent": 0.046143, "attempts": 2, "requests": 71}}
+    assert check_spend(res) == (0.046143, 2)
+    assert check_spend({"spent": 0.0221}) == (0.0221, 1)
+    assert spend_note(0.046143, 2) == ("$0.0461 ($0.0461 across two attempts; stop-and-resume "
+                                       "saves cached work)")
+    assert spend_note(0.0221) == "$0.0221"
+    assert net_saving_line(418.035, 336.47999999999996, *check_spend(res)) == (
+        "Net saving: $418.04/mo → $336.48/mo = $81.56/mo saved. Check cost once at $0.0461 "
+        "(list) ($0.0461 across two attempts; stop-and-resume saves cached work). "
+        "First-month ROI: $81.51.")

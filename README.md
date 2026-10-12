@@ -14,7 +14,7 @@ Full comparison between candidates: gpt-oss-20b + verifier is the cheapest in-bu
 
 When the requirement "data must stay in the EU" was added, #21 flipped to **stale** (Groq documents US-only; the chosen stack can't meet the new requirement), and so did an older Groq decision. MongoDB went to **needs_review**: where its data lives depends on how it's deployed. Stale means a known fact breaks it; needs_review means a human should judge.
 
-Live trace in neatlogs: `0f65667e9f5c521dfc124c89f188f9ca` (71 real provider requests across a quota reset, $0.0461 at list price on free tiers).
+Live trace in neatlogs: `0f65667e9f5c521dfc124c89f188f9ca` (71 real provider requests across a quota reset, $0.0461 ($0.0461 across two attempts; stop-and-resume saves cached work) at list price on free tiers).
 
 ## How it works
 
@@ -57,7 +57,7 @@ python scripts/demo_dataset.py --out .demo-dataset/demo-app --offline
 
 ## Results
 
-On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions. Pivot recall 0.67 → 1.00 on original cases; 0.5 on held-out cases (v2 and v3). We ship with the lower number visible — held-out is where the next version has to improve. 474 tests, no network.
+On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions. Pivot recall 0.67 → 1.00 on original cases; 0.5 on held-out cases (v2 and v3). We ship with the lower number visible — held-out is where the next version has to improve. 475 tests, no network.
 
 ## Sponsor tools
 

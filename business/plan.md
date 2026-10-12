@@ -15,8 +15,8 @@ Updated 2026-10-12: live run on #21 produced $82/mo saved, not $62. The plan's c
 
 ## Unit economics
 
-LLM cost at list price: $0.1148/customer/month (currently $0 paid, free tier).
-Contribution margin after modeled payment fees: 99.6% – 99.9% across tiers.
+LLM cost at list price: $0.0863/customer/mo on live data (down from $0.1148 in the demo dataset) (currently $0 paid, free tier).
+Contribution margin after modeled payment fees: 99.6% – 99.9% across tiers. Margins and runway conclusions are unchanged: they were 99.6% – 99.9% at either number.
 
 ## 12-month runway (revised, 2026-10-12)
 
