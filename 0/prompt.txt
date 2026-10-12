@@ -1,0 +1,305 @@
+<pasted_content id="2598">
+Add focus-area labels across the UI and the resolve PR, no new logic. Work in small steps, stop with status after each:
+
+1. In the fit-check report, decision receipt and resolve PR, add a small badge next to each step saying which focus area it exercises. Use these mappings (don't guess, use this exact table):
+   - plan step → Planning
+   - preflight + swap + retry on 429 → Recovery
+   - briefing + call-site analysis → Context
+   - run + resumable + cache → Execution
+   - verifiers + judges + CIs → Verification
+   - "same case rerun with new tool choice" + failure bank → Iteration
+   - picking candidates/judges/verifiers → Tool use
+   - graph writes between steps → State
+2. On the UI overview, add one row: "8 focus areas live here" with 8 chips. Each chip links to a page section where that area is strongest (e.g. Recovery → fit-check report's swap/retry section).
+3. On the decision receipt, under the agent journal, add one line per entry naming its focus area ("rate_limit_backoff → Recovery", "retry_with_feedback → Iteration").
+4. In the PR template, add an "8 focus areas touched by this change" section listing each with the trace span that proves it.
+5. Rebuild docs/screenshots for overview + #21 receipt + a fit-check report in both light and dark.
+Full suite, stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Option 2. Before changing any tags, show me the full list of conflicts between the current focus_area strings and the hackathon's 8 words. For each conflict, give me:
+- the span name
+- its current tag
+- the hackathon tag it should get
+- which tests pin the current tag
+I'll approve each change individually. Don't retag anything until I say yes to each. Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Decisions on the 8 conflicts:
+1. No, keep tool_use.
+2. No, keep tool_use.
+3. Yes, change to iteration. AND yes, remove retry_with_feedback from RECOVERY_EVENTS so the recovery count doesn't double it. Update the "Agent journal: N recoveries" line's docstring/comment accordingly.
+4. Yes, change to tool_use.
+5. Yes, change to tool_use.
+6. Yes, change to tool_use.
+7. Yes, change to execution.
+8. Yes, change to iteration.
+
+For every "yes", update any test that pinned the old tag (test_fit_tracing.py:69 and test_fit_check.py:247 for #3) and run the full suite.
+
+On the items you listed as not in my table: your assignments are correct, keep as-is. Specifically:
+- branch, commit → state (git writes still represent state transitions of the decision)
+- graph_lookup, decisions_matched → state
+- each candidate's first run call (evaluate.py:182) → execution (keep tool_use for the "selected" events, use execution for the actual run)
+- recommend, latency_requirement, blocked_by_requirement, already_decided → planning
+- price_lookup, detect, extract_cases, extract_constraints → tool_use
+- investigate → context
+- generate_tests, test → verification
+
+Only change evaluate.py:182 from tool_use to execution if that span's current tag is tool_use. If it's already something else, leave it. Report what you changed.
+
+Then rebuild the overview + decision receipt + one fit-check report screenshot, light + dark. Update the UI's "focus areas live here" chip row (one chip per distinct area the code now emits), the hackathon mapping table at the bottom of the overview, the "focus areas touched by this change" line at the top of the resolve PR, and the fit-check report's step strip.
+
+Full suite serially. Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+--go through the official doc and data go ahead
+
+---
+
+Add scripts/live_demo_run.py: on the real demo-app, run `check 21` live once (no --offline), with --max-cost 0.10 and the real Groq+Gemini keys. Print the trace id and the full report to a file demo-live-run.txt. Also save the resulting trace id into docs/demo.md as "live-run trace: <id> ($<cost>)". This is run manually, not in CI. One command, clear output, nothing else changes.
+
+---
+
+.venv\Scripts\python.exe scripts\live_demo_run.py
+
+---
+
+<pasted_content id="2598">
+Reply to Claude Code:
+Before I run the live script, I need the cost to be real so it shows on screen in the demo video. Point live_demo_run.py at a fresh cache (new dir name like .notbydefault/cache-live-<timestamp>/) so every request goes to the providers. Keep the --max-cost cap. Don't move or delete the old cache. One extra flag --use-fresh-cache (default true for live_demo_run.py).
+
+If the pre-run cost estimate exceeds $0.10, raise the cap to $0.15 — the check is real money and I'd rather see it than cap below the real number. Only this one script; the main CLI stays as it is.
+
+Also: after the live run finishes, append one line to the record: "Live-run cost: $X.XX (real spend, fresh cache)". That becomes evidence on screen.
+</pasted_content id="2598">
+
+---
+
+.venv\Scripts\python.exe scripts\live_demo_run.py
+
+---
+
+<pasted_content id="2598">
+Yes, add --cache DIR to live_demo_run.py so a resume continues in cache-live-20261011T202940Z/. Default stays "fresh timestamped folder", --cache <dir> resumes.
+
+Also update the script:
+1. If the check hits a daily_limit exit (code 4), the script catches it, prints the Gemini reset time in Pacific and local, prints the exact resume command (.venv\Scripts\python.exe scripts\live_demo_run.py --cache cache-live-20261011T202940Z), and leaves the cache folder as-is. No panic.
+2. On a successful finish OR a resume that finishes, write all the usual files (demo-live-run.txt, docs/demo.md trace line, decision record line) AND an extra line in the record: "Live run: X requests on Y models across Z calendar days (quota reset between). Partial trace: <first_trace>, final trace: <second_trace>."
+3. Don't delete or move the existing cache-live-20261011T202940Z folder.
+
+Also add this to the known-limitations section of README (one line): "Live demo may require a resume across days when provider free-tier quotas reset; the check saves state and resumes without duplicating requests."
+
+Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Two tasks:
+
+TASK A — the three one-liners from earlier:
+1. In the fit-check verdict section (UI, check report, decision record, resolve PR), add one line below the monthly cost comparison:
+"Net saving: today $407/mo → recommended $345/mo = $62/mo saved. Check cost once at $0.0375 (list). First-month ROI: $61.96."
+2. In README under "Known limitations":
+"Eval results are measured on our own cases with held-out cases written before fixes. Not independently labeled."
+3. In README under "Sponsor tools" (as a sub-bullet):
+"Model calls go to Groq and Google AI Studio over HTTPS. Your project data (notes, cases, code paths) is sent as prompts to those providers. No calls to Anthropic or OpenAI."
+Rebuild only the #21 receipt screenshot (both themes).
+
+TASK B — the --cache flag on live_demo_run.py (from the Gemini quota stop):
+[paste the prompt I sent you a message ago]
+
+Full suite serially. Stage, write msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Four things, in order. Small steps, status after each:
+
+1. ROI number: use the actual data, not the rounded $61.96. The line should read: "Net saving: $407.35/mo → $345.07/mo = $62.28/mo saved. Check cost once at $0.0375 (list). First-month ROI: $62.24." Update the hard-coded $61.96 I gave you to the computed value, and keep the computation data-driven for other decisions.
+
+2. README merge: yes, merge. Delete the old # NotByDefault heading and the old "Known limitations" section. Move the Entire integration section and the live-demo line from the old block into the new README's correct sections. Then the file has one of everything.
+
+3. The neatlogs sub-bullet addition about prompts + outputs going to neatlogs: keep your edit. Honest and accurate. Add one more clause: "When NEATLOGS_API_KEY is NOT set, no spans leave the machine."
+
+4. Fix the false-positive ERROR status on neatlogs (big one): when an LLM call is skipped by --offline because there's no cached answer, the span should NOT be status=ERROR. It should be status=OK with nbd.outcome="offline_cache_miss". Same rule for daily-limit skip, preflight-swap-decided-unavailable, and judge-fallback-no-judge. These are expected code paths, not failures.
+   - In notbydefault/fit/tracing.py (or wherever the span finalization lives), add a HANDLED_OUTCOMES set and when the step raises/returns one of those outcomes, set span.set_status(StatusCode.OK) and span.set_attribute("nbd.outcome", <reason>). Only unhandled exceptions keep ERROR.
+   - Add a test per outcome.
+   - After this change, the neatlogs home should show well under 25% error on the next check run. Right now the 25% is giving a wrong signal to anyone opening our dashboard.
+
+Full suite serially. Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Yes, restore the three lost sections. Keep the current 70-line README as the base and add:
+
+1. Entire integration — put it under "Sponsor tools" alongside the neatlogs sub-bullet. One concise paragraph, not a table: "Entire's Graph finds the callers affected by each decision (so resolve #21 edits actions.py but leaves app.py alone — decision #13's own evidence rejected Gemini for summaries). Checkpoints link decisions to the agent session that made them."
+
+2. Known limitations section — new section before Submission. Include both:
+   - "Live demo may require a resume across days when provider free-tier quotas reset; the check saves state and resumes without duplicating requests."
+   - "Eval results are measured on our own cases with held-out cases written before fixes. Not independently labeled."
+   - And add one more: "test_hook_is_fast is a timing flake (300 ms limit); passes when run alone."
+
+3. "No calls to Anthropic or OpenAI" — put it in the neatlogs sub-bullet after the data-provider disclosure. Full text: "Model calls go to Groq and Google AI Studio over HTTPS. No calls to Anthropic or OpenAI. When NEATLOGS_API_KEY is set, prompts and outputs are also sent to neatlogs. When it's not set, no spans leave the machine."
+
+Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+Update Results to 472 tests. Also check every other hardcoded test count and verify it against the tested results in README, ARCHITECTURE.md, docs/demo.md and the UI, update all of them to 472. Add it back. The neatlogs sub-bullet should name what gets sent. Full text:
+"Model calls go to Groq and Google AI Studio over HTTPS. Your project data (notes, cases, code paths) is sent to those providers as prompts. No calls to Anthropic or OpenAI. When NEATLOGS_API_KEY is set, prompts and outputs are also sent to neatlogs. When it's not set, no spans leave the machine."
+
+---
+
+Status check: list every file in the repo that mentions "NotByDefault" or "nodefault" with wrong capitalization or old naming. Just report, don't fix. I want to make sure the name is consistent across README, ARCHITECTURE, demo files, UI.
+
+---
+
+once again check any pending or backlog task is there along with that once more check every stated number, acc with the results recheck that they are not hardcoded and verified one
+
+---
+
+<pasted_content id="2598">
+Four edits, in order. Small steps, status after each. Full suite serially at the end.
+
+1. Hook speed in README/ARCHITECTURE: reword "under 300 ms" to "targets under 300 ms (p50 under 200 ms in the full suite; worst-case 405 ms on CI)".
+
+2. Pivot recall in README Results: change to "Pivot recall 0.67 → 1.00 on original cases; 0.5 on held-out cases (v2 and v3). We ship with the lower number visible — held-out is where the next version has to improve."
+
+3. Create business/plan.md with the content I'll paste below. Then fix the README cfo.ai line to:
+"Pricing modeled with Ari (cfo.ai): $49/team/month Starter, $149/month Growth. Revised base case is self-funded through October 2027 under disclosed assumptions. Full plan: business/plan.md."
+
+4. Add the fit-check step strip to the text report (notbydefault check output) too, matching the UI. Each step name + its focus_area badge in brackets, e.g. "preflight [tool_use]  →  execute [execution]  →  verify [verification]".
+
+Also sweep ARCHITECTURE.md to add short paragraphs on: focus-area display + old-tag map, HANDLED_OUTCOMES + nbd.outcome, net-saving line, live_demo_run.py. Don't rebuild screenshots.
+
+Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+business plan - 
+
+<pasted_content id="2598">
+# NotByDefault — Business plan
+
+Generated with cfo.ai's Ari agent on 2026-10-12 using business/costs.csv.
+
+## Pricing (launch hypothesis, not validated)
+
+| Tier | Price | Included |
+|---|---|---|
+| Starter | $49/team/mo | Unlimited collaborators, 4 bounded fit-checks/mo |
+| Growth | $149/team/mo | 20 fit-checks/mo, ongoing decision monitoring |
+
+Priced per team because the value is reviewing decisions, not counting engineers. One persistent $62/mo saved decision covers Starter with $13 left over.
+
+## Unit economics
+
+LLM cost at list price: $0.1148/customer/month (currently $0 paid, free tier).
+Contribution margin after modeled payment fees: 99.6% – 99.9% across tiers.
+
+## 12-month runway (revised, 2026-10-12)
+
+Starting cash: $5,000. Draw: $0 Nov–Apr, $2,000/mo May–Oct.
+
+Three customer streams:
+- Two pilots paying $49 from November (upfront, hand-sold).
+- Acquisition forecast: 5 → 35 qualified prospects/mo, 20% conversion, 3% monthly churn.
+- Upgrades: 20% of surviving customers move to $149 Growth in their third paid month.
+
+Growth customers carry the higher 20 fit-checks/mo usage cost. $150/mo operating reserve included.
+
+| | |
+|---|---|
+| Starting cash | $5,000 |
+| Lowest month-end cash | $4,649 (August 2027) |
+| Ending cash (October 2027) | $5,354 |
+| October 2027 MRR | $2,789 |
+| Additional cash required | $0 |
+
+Cash builds to ~$7,000 by April, declines after draws start in May, recovers in September as monthly cash flow turns positive.
+
+## Honest caveats
+
+- Pricing is a launch hypothesis, not a validated price.
+- Upgrade rate (20% in month 3) is an assumption; the plan has not been tested against zero upgrades.
+- Living costs covered by $2,000/mo draw are modest — most founders need more.
+- Demo evidence is one decision on one app, not a typical-customer ROI.
+- Taxes, substantial delivery labor, usage spikes excluded.
+- The $5,000 starting cash is assumed to be self-funded; no outside funding modelled.
+
+## First experiment (next 30 days)
+
+Offer 10 qualified founders / staff engineers: *"one decision review on your real workload + 30 days monitoring, $49 upfront."* Same offer for all. Deliver manually where needed.
+
+Success gate: ≥ 3/10 pay, ≥ 2/10 renew at $49 after 30 days.
+
+Full pricing/runway artifact: cfo.ai (Ari, 2026-10-12).
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+4. In README's cfo.ai line, replace with: "Pricing modeled with Ari (cfo.ai): $49/team/month Starter, $149/month Growth. Revised base case is self-funded through October 2027 under disclosed assumptions. Full plan: business/plan.md."
+
+5. In README's "Business case" section (the three-sentence Ari paragraph), replace it with EXACTLY:
+"NotByDefault reviews AI coding agents' technical choices against the project's own data and checks their stated reasoning, with proposed launch pricing of $49 per team per month. In our demo, one model-selection decision reduced projected inference costs by $62/month while improving benchmark accuracy — enough to cover the subscription if those savings persist. Our revised 12-month plan starts with $5,000 of founder cash, two pre-launch pilot customers at $49, 20% upgrade to $149 Growth in the third paid month, and a staged founder draw ($0 Nov–Apr, $2k/mo May–Oct) — resulting in a self-funded year with ~$5,354 ending cash and $2,789 MRR by October 2027 under disclosed assumptions."
+
+6. Add the fit-check step strip to the text report (notbydefault check output) matching the UI. Each step name + its focus_area in brackets, e.g. "preflight [tool_use]  →  execute [execution]  →  verify [verification]".
+
+Also sweep ARCHITECTURE.md to add short paragraphs on: focus-area display + old-tag map, HANDLED_OUTCOMES + nbd.outcome, net-saving line, live_demo_run.py. And grep the entire repo for the strings "$16,466", "$16,500", "16466", "16500", "requires additional funding", "funding gap" — if any of those appear outside business/plan.md's historical note, update them to match the new self-funded result.
+
+Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Yes — change "while improving benchmark accuracy" to "while improving accuracy on the project's own cases" everywhere it appears (Business case paragraph in README, and anywhere else that phrase sits). It's the honest version and it matches the rest of the pitch.
+
+Also: the business/plan.md content didn't paste — here it is now, write it verbatim:
+
+[paste the full business/plan.md block from the earlier message, the one with ~2,789 MRR and $5,354 ending cash]
+
+Then grep README for any remaining mention of a funding gap number — the paragraph change may have left a stale clause. Full suite serially. Stage, msg.txt, don't commit.
+</pasted_content id="2598">
+
+---
+
+<pasted_content id="2598">
+Switch to the live-run numbers everywhere. Live winner is gpt-oss-20b + verifier at $336/mo. Live trace: 0f65667e9f5c521dfc124c89f188f9ca. Spent $0.0461 live.
+
+1. Rebuild the demo dataset so the receipts, PR, overview and screenshots match the live run:
+   - Rerun scripts/demo_dataset.py --offline against a fresh copy, but seed decision #21's resolve to apply gpt-oss-20b + verifier (not Gemini). The resolve PR shows the new winner. The claim-check verdicts stay as they are (cost ✗, quality ✗, popularity –) because they're still true; just update the "better in-budget candidate" line from "11/12 at gemini-3.1-flash-lite" to "11/12 at gemini-3.1-flash-lite within budget" (unchanged — gemini-3.1-flash-lite is still the quality reference; the recommended cheapest is gpt-oss-20b).
+   - After the EU requirement lands, #21 is now STALE (invalidated: Groq is US-only), not needs_review. The receipt says stale with reason "Groq documents US-only; EU requirement broken."
+   - For a needs_review demo case, add a second requirement scenario or point at decision #13 (which uses Gemini and gets needs_review for undocumented region).
+   - Rebuild overview + decision #21 + fit-check-report screenshots in both themes.
+
+2. Update README numbers:
+   - "$407→$345/mo" and "$62/mo saved" become "$418→$336/mo" and "$82/mo saved" (or $81.56).
+   - "11/12 at gemini-3.1-flash-lite" becomes "10/12 at gpt-oss-20b + verifier (gemini-3.1-flash-lite scored 11/12 but was over budget)" — more honest, matches the recommendation.
+   - The trace reference "4bcff389…" updates to the live "0f65667e9f5c521dfc124c89f188f9ca".
+   - The "resolve applied gemini-3.1-flash-lite" line becomes "resolve applied gpt-oss-20b + verifier".
+   - The EU scenario reads "#21 flips to stale (Groq documents US-only; the chosen stack can't meet the new requirement)."
+
+3. Update business/plan.md's "In our demo, one model-selection decision reduced projected inference costs by $62/month" to "$82/month". Rerun Ari numbers aren't needed — the business plan assumed $62, and $82 only strengthens the "self-funded year" conclusion. But add one line: "Updated 2026-10-12: live run on #21 produced $82/mo saved, not $62. The plan's conclusions are unchanged — more saving per decision strengthens the ROI."
+
+4. Update ARCHITECTURE.md's "Measured" section with the live trace and numbers.
+
+5. One honest caveat line in README's "One real example":
+"Full comparison between candidates: gpt-oss-20b + verifier is the cheapest in-budget recommendation at $336/mo; gemini-3.1-flash-lite scored higher (11/12 vs 10/12) but $345/mo is still under budget — the ranking depends on whether you prioritize cost or correctness. See the fit-check table."
+
+Full suite serially. Stage, write msg.txt (no Co-Authored-By). Don't commit.
+</pasted_content id="2598">

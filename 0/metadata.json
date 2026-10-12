@@ -1,0 +1,96 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4QJK1VX1PFQCFVNBJ0PV8YK",
+  "session_id": "304d83c9-5b9f-4607-9d1a-e69e7673fc37",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-12T08:10:16.2904563Z",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "save_step_count": 3,
+  "files_touched": [
+    "ARCHITECTURE.md",
+    "README.md",
+    "business/costs.csv",
+    "business/costs.md",
+    "business/plan.md",
+    "demo-app/decisions/0002-ai-model-openai-gpt-oss-120b.md",
+    "docs/demo.md",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "docs/screenshots/fit-check-dark.png",
+    "docs/screenshots/fit-check-light.png",
+    "docs/screenshots/overview-dark.png",
+    "docs/screenshots/overview-light.png",
+    "scripts/demo_dataset.py",
+    "tests/test_fit_units.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "27bd5ddc880c",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 462,
+    "cache_creation_tokens": 1094861,
+    "cache_read_tokens": 55831403,
+    "output_tokens": 162944,
+    "api_call_count": 231
+  },
+  "session_metrics": {
+    "turn_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-12T08:10:15.723277Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 10,
+    "human_modified": 1423,
+    "human_removed": 0,
+    "total_committed": 1210,
+    "total_lines_changed": 1433,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 8,
+      "user_lines_removed": 0,
+      "agent_lines_added": 67,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 205,
+      "user_lines_removed": 123,
+      "agent_lines_added": 57,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "demo-app/decisions/0002-ai-model-openai-gpt-oss-120b.md": 124,
+        "demo-live-run.txt": 70,
+        "docs/demo.md": 3
+      },
+      "user_removed_per_file": {
+        "demo-app/decisions/0002-ai-model-openai-gpt-oss-120b.md": 117,
+        "demo-live-run.txt": 6
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 78,
+      "user_lines_removed": 6,
+      "agent_lines_added": 1400,
+      "agent_lines_removed": 1271,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 8,
+        "demo-live-run.txt": 70
+      },
+      "user_removed_per_file": {
+        "demo-live-run.txt": 6
+      }
+    }
+  ]
+}
