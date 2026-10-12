@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4QMV29Z2VF2CGC9Y7QDNXRF",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "ARCHITECTURE.md",
+    "README.md",
+    "business/plan.md",
+    "demo-app/decisions/0002-ai-model-openai-gpt-oss-120b.md",
+    "docs/demo.md",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "docs/screenshots/fit-check-dark.png",
+    "docs/screenshots/fit-check-light.png",
+    "notbydefault/fit/report.py",
+    "notbydefault/resolve.py",
+    "notbydefault/ui/data.py",
+    "notbydefault/ui/templates/_decision_body.html",
+    "scripts/live_demo_run.py",
+    "tests/test_fit_units.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 502,
+    "cache_creation_tokens": 1116931,
+    "cache_read_tokens": 63839467,
+    "output_tokens": 177348,
+    "api_call_count": 251
+  }
+}
