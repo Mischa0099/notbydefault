@@ -1,0 +1,207 @@
+<pasted_content id="a553">
+You are working in my NotByDefault repository. Your first task is to audit and reconcile all demo claims before I record my promotional video or submit the hackathon project.
+
+## Context
+My latest recorded live-run notes report:
+- Decision #21: original gpt-oss-120b at $418/month, 10/12 correct.
+- Cheaper gpt-oss-20b + verifier: $336/month, 10/12 correct, with reported net savings of $81.56/month.
+- Best quality within budget: gemini-3.1-flash-lite at $345/month, 11/12 correct, with 8/8 hard cases passing.
+- Latest live-run trace: 0f65667e9f5c521dfc124c89f188f9ca.
+- Another earlier demo described $407/month, a $375 budget, and a 10/12 versus 11/12 comparison.
+- An earlier resolve demo reported tests going from 0/12 to 12/12 passing.
+
+These may refer to different runs or evaluation stages. Do not assume they are interchangeable.
+
+## Tasks
+1. Inspect the current README, docs/demo.md, decision records, saved traces or trace references, cost exports, evaluation results, and relevant scripts.
+2. Identify the source of truth for every numeric claim and establish which claims belong to which run.
+3. Verify arithmetic, budget constraints, cost assumptions, model names, test counts, and whether savings are measured or projected.
+4. Identify unsupported claims, contradictory documentation, seeded demo data, and results that cannot be independently verified.
+5. Create `docs/demo_claims_audit.md` with a table containing: claim, source, run/trace, verification status, and recommended wording.
+6. Recommend ONE coherent, reproducible example for the promotional video. Prefer the latest verified run, but do not use a claim merely because it is newer.
+7. If the 0/12-to-12/12 test result cannot be tied to the selected run, explicitly flag it instead of combining the results.
+
+## Rules
+- Inspect before editing.
+- Do not invent results or modify evaluation outputs to improve metrics.
+- Do not overwrite unrelated work.
+- Do not change application logic during this audit.
+- Clearly distinguish verified, reported-but-unverified, seeded, and projected figures.
+
+At the end, summarize the strongest defensible demo story and list the exact claims I should use in my video.
+</pasted_content id="a553">
+
+---
+
+<pasted_content id="a553">
+Prepare NotByDefault for a clean, reproducible hackathon demonstration. Work in the existing repository.
+
+## Goal
+I need to record real terminal, dashboard, and GitHub footage for a short promotional video. Do not generate fake UI or fake terminal output.
+
+## Tasks
+1. Inspect the current README, CLI help, demo scripts, docs/demo.md, dashboard routes, and the demo claims audit if it exists.
+2. Identify the shortest reliable sequence demonstrating:
+   - A captured technical decision and its stated reason.
+   - Claim verification.
+   - Workload-specific comparison of alternatives.
+   - A decision receipt containing evidence.
+   - A changed requirement causing the appropriate `stale` or `needs_review` state.
+3. Verify the exact commands against the current CLI implementation. Do not guess command syntax.
+4. Determine which parts require real API calls and which can be reproduced offline. Respect existing cost caps and caches; never bypass quota protections.
+5. Create `docs/recording_plan.md` containing:
+   - Exact commands in execution order.
+   - Expected results, grounded in actual code or verified outputs.
+   - What I should show on screen for each step.
+   - Approximate clip duration.
+   - Whether each clip is essential or optional.
+   - Setup and cleanup instructions.
+6. Include a recovery plan for rate limits, cached results, and dashboard startup failures.
+7. Check whether the actual resolve flow and GitHub PR exist and are safe to demonstrate. If not, flag this instead of fabricating a PR.
+
+## Safety
+- Do not expose API keys, `.env` values, private data, or sensitive environment output.
+- Do not run expensive live evaluations without checking their configured cost cap.
+- Do not push, commit, or modify production branches.
+- Prefer a disposable copy or existing demo dataset where appropriate.
+- Do not claim that seeded offline data is a live detection.
+
+Do not add features. Prepare the smallest convincing demonstration of the existing product and report any blockers that require my manual action.
+</pasted_content id="a553">
+
+---
+
+<pasted_content id="a553">
+Polish the presentation materials for my NotByDefault neatHack project using the actual repository as the source of truth.
+
+## Objectives
+Produce a concise, technically credible README and a short promotional-video package. This is a developer-built tool, not a corporate product launch.
+
+## Tasks
+1. Inspect the current README, project implementation, docs/demo.md, architecture documentation, evaluation artifacts, sponsor integrations, and `docs/demo_claims_audit.md` if available.
+2. Improve the README so it communicates:
+   - What problem NotByDefault solves.
+   - How it captures, checks, tests, and revisits technical decisions.
+   - One verified real example.
+   - A concise explanation of the key differentiators.
+   - A working quickstart based on actual CLI commands.
+   - Verified evaluation results and relevant limitations.
+   - neatlogs, Entire, and cfo.ai integrations where supported by evidence.
+   - Repository and demo links.
+3. Keep the README detailed enough for developers to understand the project, but remove repetitive explanations, lengthy business-plan details, and implementation inventories that belong in separate documentation.
+4. Create `docs/x_promo_package.md` containing:
+   - Three hook options.
+   - One 45–60 second video script with timestamps, visuals, voiceover, and on-screen text.
+   - A list of actual screen recordings required.
+   - Three X post options, each under 280 characters.
+   - A thumbnail line and closing call to action.
+5. Make the video tell one story: an agent's claim, the evidence, the better-supported decision, and the verified outcome.
+6. Keep on-screen text to six words maximum per element, except the repository URL.
+7. Use the demo claims audit to select consistent figures. Do not combine different runs.
+8. Inspect `.gitignore`, confirm secrets are not included, and ensure all links and commands are grounded in the repository.
+
+## Rules
+- Do not invent integrations, features, results, users, or customer testimonials.
+- Label projected costs accurately.
+- Identify seeded data honestly.
+- Preserve the distinction between `stale` and `needs_review`.
+- Do not introduce new product features or unnecessary dependencies.
+- Do not overwrite unrelated user work.
+- Leave a placeholder for the demo video URL until I provide the actual link.
+
+Make the changes directly in the appropriate files, then summarize the changed files and any claims I must personally verify before publishing.
+</pasted_content id="a553">
+
+---
+
+<pasted_content id="a553">
+Build the Override Guard, scoped to NOT break anything. If any step takes long, stop and tell me.
+
+What it does: when the decision graph records a NEW decision that overrides an existing REVIEWED or STALE decision (same decision_type, same project), the hook recognises it, and the new decision is tagged nbd.override_guard={"status": "needs_evidence", "overrides": <old_id>, "old_evidence": <trace_id or null>}. On the UI's receipt, show an orange banner: "Overrides decision #<old_id> which has evidence. New evidence required to confirm this choice."
+
+That's it. No new CLI command. No enforcement — just the warning badge. Judges see it as "the system notices you're undoing proven work."
+
+Steps, small, status after each:
+
+1. Graph change (notbydefault/graph.py or wherever decisions are recorded): when inserting a new decision, check if an older decision with the same decision_type exists in status "reviewed" or "stale". If yes, record on the new decision: 
+   override_guard = {"status": "needs_evidence", "overrides_decision_id": old.id, "old_evidence_trace": old.evidence.get("trace_id") if any}
+   
+2. Receipt UI (template only, no new routes): when override_guard is set on the decision being viewed, render an orange banner above the claim-check section:
+   "⚠ Overrides decision #<id> which has evidence (trace <short-trace>). New evidence required to confirm this choice."
+
+3. One test: given a reviewed decision #21, create a new overriding decision; assert the override_guard field is set with the right overrides_decision_id. Mock any model/graph calls that would reach the network.
+
+4. In the demo-dataset script, add one line that creates a seeded override scenario on a copy of #21 so the UI shows the banner on at least one page. Mark it source=seeded in the receipt, so it's honest in the video.
+
+5. Rebuild only the #21 receipt screenshot in both themes (so the banner is visible for the video).
+
+Full suite serially (-q -x -p no:cacheprovider --no-header). If ANYTHING fails that was green before, revert that specific change and tell me. 
+
+Important rules:
+- Don't change existing graph queries or hook paths. Just add a new field read/written.
+- Don't change existing tests. Only add new tests.
+- If step 1 needs more than 20 minutes of fiddling, stop and say so. The product can live without this.
+
+Stage, msg.txt without Co-Authored-By, don't commit.
+</pasted_content id="a553">
+
+---
+
+<pasted_content id="a553">
+Three polish items on .demo-dataset/rec only. No new features, no logic changes:
+
+1. On the overview, add one highlighted "live run proof" card next to the debt tile:
+   "Latest live run: trace 0f65667e, 71 real requests, $0.0461 spent."
+   Clickable, opens neatlogs in a new tab. Template only, no new routes.
+   
+2. On decision #21's receipt, pin the key three numbers at the top in big type:
+   "10/12 correct · $418/mo today · $336/mo recommended · $82 projected saving"
+   One template edit, no logic.
+
+3. In the UI's top-right, add a tiny "neatHack 2026" badge that links to the GitHub repo. 
+   One template edit.
+
+Rebuild only the #21 receipt + overview screenshots. Full suite serially. 
+Stage, msg.txt, don't commit.
+</pasted_content id="a553">
+
+---
+
+<pasted_content id="a553">
+Build the useful scan-as-retroactive-audit, scoped to NOT break anything.
+
+What it does: `notbydefault scan` grows a new flag `--history`. When passed, it walks the current repo's git log (via subprocess), runs the EXISTING decision detector (notbydefault/detect.py) on each commit's diff, and reports a count:
+"Repo history scan: found N decision-shaped changes across M commits. First few: ..."
+
+That's it. No new graph writes. No new UI page. No Entire integration. Pure CLI output.
+Judges see "the system can audit history too", without any new persistent state.
+
+Steps, small, status after each:
+
+1. In notbydefault/scan.py (existing file), add a new flag --history to the scan subcommand. When present, it runs a new function scan_history(project_dir).
+
+2. scan_history uses `git log --format=%H -n 100` to list up to the last 100 commits.
+   For each commit, run `git show <sha> -- '*.py' '*.yaml' '*.toml' 'requirements*.txt'` and feed the diff text to the EXISTING detector's detect_from_diff() if one exists, else build the smallest adapter that calls the existing regex/pattern code from detect.py on the raw diff lines. 
+   
+   If detect.py has no diff-friendly entry point and would need refactoring, stop and tell me — don't rebuild the detector. Instead, do a 20-line fallback: grep the diff lines for the same regexes detect.py uses (model names, SDK installs, orm imports), count hits, report that.
+
+3. Report format: 
+   "Scanned last N commits (actual count). Found K decision-shaped lines across J commits. Examples (up to 3):
+     - <commit short sha> <date> <path>: <line snippet>"
+   No graph writes. No persistence. One printed block.
+
+4. One test: tests/test_scan_history.py. Build a tiny git repo in a temp dir with 3 commits (one with a model literal, one benign, one with pip install). Assert scan_history finds exactly 2 hits across 2 commits. Mock subprocess if needed, or use a real tiny repo in a temp dir.
+
+5. Document it in README: ONE line under the existing `scan` section: "`--history` scans the last 100 commits and reports decision-shaped changes without touching the graph. Read-only audit."
+
+Important rules:
+- No changes to detect.py itself. If a diff-friendly entry doesn't exist, use the fallback regex path and say so in the output ("fallback regex scan").
+- No new graph tables, no new node types.
+- No new UI changes.
+- No Entire API calls.
+- If the test setup needs more than 15 minutes, give up — the smoke test alone is enough; verify by hand.
+
+If anything existing breaks, revert that specific file. Full suite serially at the end.
+
+Stage, write msg.txt (no Co-Authored-By), don't commit.
+</pasted_content id="a553">

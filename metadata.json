@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4QVE70VJNCJV8VREP9QR8F0",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "docs/screenshots/overview-dark.png",
+    "docs/screenshots/overview-light.png",
+    "notbydefault/cli.py",
+    "notbydefault/scan.py",
+    "notbydefault/ui/data.py",
+    "notbydefault/ui/static/app.css",
+    "notbydefault/ui/templates/_overview_live.html",
+    "notbydefault/ui/templates/base.html",
+    "notbydefault/ui/templates/decision.html",
+    "tests/test_scan_history.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 272,
+    "cache_creation_tokens": 266033,
+    "cache_read_tokens": 25988286,
+    "output_tokens": 108135,
+    "api_call_count": 136
+  }
+}
