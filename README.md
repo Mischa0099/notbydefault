@@ -8,11 +8,13 @@ AI coding agents pick models, databases and SDKs by default and give a reason. N
 
 ## Example
 
-An agent picked `openai/gpt-oss-120b` for an action-items endpoint because it was "cost-effective, strong at extraction, widely used". On the project's 12 cases it scored 10/12 at $407/mo, over the $375 budget. `gemini-3.1-flash-lite` scored 11/12 within budget. `notbydefault resolve 21` switched to it on a branch, with generated tests going from 0/12 to 12/12, and wrote the PR.
+An agent picked `openai/gpt-oss-120b` for an action-items endpoint because it was "cost-effective, strong at extraction, widely used". On the project's 12 cases it scored 10/12 at $418/mo, over the $375 budget. The cheapest setup that meets the bar is 10/12 at gpt-oss-20b + verifier, $336/mo: **$418→$336/mo, $81.56/mo saved**. `notbydefault resolve 21` recommends that switch and stops there: adding a verifier loop to the code isn't automated yet, so it changes nothing.
 
-When the requirement "data must stay in the EU" was added, that decision was flagged **needs_review** (no documented regional guarantee) and an older Groq decision **stale** (Groq documents US-only). Stale means a known fact breaks it; needs_review means a human should judge.
+Full comparison between candidates: gpt-oss-20b + verifier is the cheapest in-budget recommendation at $336/mo; gemini-3.1-flash-lite scored higher (11/12 vs 10/12) but $345/mo is still under budget — the ranking depends on whether you prioritize cost or correctness. See the fit-check table.
 
-Trace in neatlogs: `4bcff389ab979638e4ffa7ee88619318`
+When the requirement "data must stay in the EU" was added, #21 flipped to **stale** (Groq documents US-only; the chosen stack can't meet the new requirement), and so did an older Groq decision. MongoDB went to **needs_review**: where its data lives depends on how it's deployed. Stale means a known fact breaks it; needs_review means a human should judge.
+
+Live trace in neatlogs: `0f65667e9f5c521dfc124c89f188f9ca` (71 real provider requests across a quota reset, $0.0461 at list price on free tiers).
 
 ## How it works
 
@@ -66,7 +68,7 @@ On our own evals, decision detection improved from 0.81 to 1.00 recall over thre
 
 ## Business case
 
-NotByDefault reviews AI coding agents' technical choices against the project's own data and checks their stated reasoning, with proposed launch pricing of $49 per team per month. In our demo, one model-selection decision reduced projected inference costs by $62/month while improving benchmark accuracy — enough to cover the subscription if those savings persist. Our revised 12-month plan starts with $5,000 of founder cash, two pre-launch pilot customers at $49, 20% upgrade to $149 Growth in the third paid month, and a staged founder draw ($0 Nov–Apr, $2k/mo May–Oct) — resulting in a self-funded year with ~$5,354 ending cash and $2,789 MRR by October 2027 under disclosed assumptions.
+NotByDefault reviews AI coding agents' technical choices against the project's own data and checks their stated reasoning, with proposed launch pricing of $49 per team per month. In our demo, one model-selection decision reduced projected inference costs by $82/month at the same accuracy on the project's own cases (10/12) — enough to cover the subscription if those savings persist. Our revised 12-month plan starts with $5,000 of founder cash, two pre-launch pilot customers at $49, 20% upgrade to $149 Growth in the third paid month, and a staged founder draw ($0 Nov–Apr, $2k/mo May–Oct) — resulting in a self-funded year with ~$5,354 ending cash and $2,789 MRR by October 2027 under disclosed assumptions.
 
 ## Known limitations
 

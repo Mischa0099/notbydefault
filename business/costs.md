@@ -11,8 +11,8 @@ Monthly costs are at the volume each fit check assumed (users x calls per user, 
 | 7 | `MongoDB` (service/database, unreviewed) | not checked | - | - | - | - | - | - | - | - | 0 |
 | 9 | `OpenAI` (service/ai-provider, unreviewed) | not checked | - | - | - | - | - | - | - | - | 0 |
 | 10 | `gpt-4o` (model/ai-model, unreviewed) | not checked | - | - | - | - | - | - | - | - | 0 |
-| 13 | `openai/gpt-oss-120b` (model/ai-model, reviewed) | switch | `groq:openai/gpt-oss-120b` | $1.51 | `groq:openai/gpt-oss-20b` | $1.04 | $0.47 | 500 users x 30 calls | $25.00 | $0.0153 | 1 |
-| 21 | `openai/gpt-oss-120b` (model/ai-model, reviewed) | switch | `groq:openai/gpt-oss-120b` | $407.35 | `gemini:gemini-3.1-flash-lite` | $345.07 | $62.28 | 20,000 users x 60 calls | $375.00 | $0.0579 | 1 |
+| 13 | `openai/gpt-oss-120b` (model/ai-model, reviewed) | switch | `groq:openai/gpt-oss-120b` | $1.51 | `groq:openai/gpt-oss-20b` | $1.04 | $0.47 | 500 users x 30 calls | $25.00 | $0.0153 | 2 |
+| 21 | `openai/gpt-oss-120b` (model/ai-model, reviewed) | switch | `groq:openai/gpt-oss-120b` | $418.04 | `groq:openai/gpt-oss-20b + verifier (<=2 retries)` | $336.48 | $81.56 | 20,000 users x 60 calls | $375.00 | $0.0561 | 2 |
 
 Savings are not totalled: the fit checks assumed different volumes (#13: 500 users x 30 calls; #21: 20,000 users x 60 calls). Re-run the older checks at today's volume to compare them.
 
@@ -24,6 +24,8 @@ What each check cost us: the requests it actually made, at list price (cache hit
 |---|---|---|---|---|---|---|---|
 | `.notbydefault/results/13-20261010T170141Z.json` | #13 | 2026-10-10 17:01 | 59 | 4 | $0.0199 | $0.0153 | free (paid $0) |
 | `.notbydefault/results/21-20261011T070521Z.json` | #21 | 2026-10-11 07:05 | 31 | 42 | $0.0375 | $0.0579 | free (paid $0) |
+| `.notbydefault/results/21-20261012T070725Z.json` | #21 | 2026-10-12 07:07 | 15 | 56 | $0.0221 | $0.0561 | free (paid $0) |
+| `.notbydefault/results/13-20261012T072408Z.json` | #13 | 2026-10-12 07:24 | 6 | 53 | $0.0068 | $0.0124 | free (paid $0), stopped early |
 
 ## Unit economics per customer
 
@@ -31,10 +33,10 @@ What each check cost us: the requests it actually made, at list price (cache hit
 |---|---|---|
 | checks per project per month | 4 | **ASSUMPTION** (`--checks-per-month`) |
 | projects per customer | 1 | **ASSUMPTION** (`--projects-per-customer`) |
-| our cost per check | $0.0287 | measured: mean over 2 check(s) of the list price of requests made |
-| requests per check | 45 | measured |
-| our LLM cost per project per month | $0.1148 | checks per month x cost per check |
-| **our LLM cost per customer per month** | **$0.1148** | x projects per customer |
-| alternative: comparison calls only | $0.1463 | every model, verifier and judge call in the comparison at list price, cache hits included, setup calls excluded; neither a lower nor an upper bound |
+| our cost per check | $0.0216 | measured: mean over 4 check(s) of the list price of requests made |
+| requests per check | 27.75 | measured |
+| our LLM cost per project per month | $0.0863 | checks per month x cost per check |
+| **our LLM cost per customer per month** | **$0.0863** | x projects per customer |
+| alternative: comparison calls only | $0.1417 | every model, verifier and judge call in the comparison at list price, cache hits included, setup calls excluded; neither a lower nor an upper bound |
 
-2 of 2 check(s) ran on provider free tiers, so the amount actually paid was $0; the figures above are what the same requests cost at list price.
+4 of 4 check(s) ran on provider free tiers, so the amount actually paid was $0; the figures above are what the same requests cost at list price.

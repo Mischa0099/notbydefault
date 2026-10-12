@@ -2,5 +2,5 @@ decision_id,label,kind,category,status,verdict,current_setup,recommended_setup,c
 7,MongoDB,service,database,unreviewed,,,,,,,,,,0,,,,,,,
 9,OpenAI,service,ai-provider,unreviewed,,,,,,,,,,0,,,,,,,
 10,gpt-4o,model,ai-model,unreviewed,,,,,,,,,,0,,,,,,,
-13,openai/gpt-oss-120b,model,ai-model,reviewed,switch,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,1.51,1.04,0.47,500.0,30.0,25.0,1,2026-10-10T17:01:41.040488+00:00,0.015285,59,4,0.019871,True,.notbydefault/results/13-20261010T170141Z.json
-21,openai/gpt-oss-120b,model,ai-model,reviewed,switch,groq:openai/gpt-oss-120b,gemini:gemini-3.1-flash-lite,407.35,345.07,62.28,20000.0,60.0,375.0,1,2026-10-11T07:05:21.048167+00:00,0.057866,31,42,0.037516,True,.notbydefault/results/21-20261011T070521Z.json
+13,openai/gpt-oss-120b,model,ai-model,reviewed,switch,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b,1.51,1.04,0.47,500.0,30.0,25.0,2,2026-10-10T17:01:41.040488+00:00,0.015285,59,4,0.019871,True,.notbydefault/results/13-20261010T170141Z.json
+21,openai/gpt-oss-120b,model,ai-model,reviewed,switch,groq:openai/gpt-oss-120b,groq:openai/gpt-oss-20b + verifier (<=2 retries),418.04,336.48,81.56,20000.0,60.0,375.0,2,2026-10-12T07:07:25.261098+00:00,0.056055,15,56,0.022094,True,.notbydefault/results/21-20261012T070725Z.json

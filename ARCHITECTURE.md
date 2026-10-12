@@ -189,12 +189,13 @@ Live mode polls a file-stat version every 2 s; the graph animates new nodes in.
 `python scripts/demo_dataset.py --out .demo-dataset/demo-app` resets that copy (gitignored) from
 demo-app (graph copied with SQLite's backup API, so the live one is never touched) and runs the
 whole loop on it: `watch` baseline; scripted, labelled agent reasons on #7, #9, #10, #13, #21;
-`resolve 21` dry run then `--apply` on its own branch; one pivot ("let's drop verifiers, they
+`resolve 21` dry run then `--apply` on its own branch (with the live verdict, gpt-oss-20b +
+verifier, both stop at the recommendation: adding a verifier loop is not automated yet); one pivot ("let's drop verifiers, they
 slow things down": the real Pivot Check runs, and when it records nothing a pivot marked
 `source=seeded` is written); an agent turn through the PreToolUse hook (reason from the scripted
 `scripts/demo_transcript.jsonl`); `claims` on every reasoned decision (#21: cost and quality
-false, popularity untested); the requirement "data must stay in the EU" (#21, now on Gemini, needs
-review; #13 on Groq goes stale); `watch`; `scan`; then `scripts/ui_screenshots.py` regenerates
+false, popularity untested); the requirement "data must stay in the EU" (#21 and #13, both on
+Groq, go stale; MongoDB needs review); `watch`; `scan`; then `scripts/ui_screenshots.py` regenerates
 docs/screenshots in light and dark (`--no-shots` skips it). Every step prints the trace id, the
 graph ids and the files it wrote. Model calls come from the copy's response cache (carried over
 unless `--fresh`); each call that would reach a provider is printed, and `--offline` skips them
@@ -215,6 +216,18 @@ and each attempt's trace id is kept in `<cache>/live-run.json`. When the check f
 decision record: the cost (list price of every response in the live cache, so a resumed run counts
 every day) and "Live run: X requests on Y models across Z calendar days ... Partial trace: ...,
 final trace: ...".
+
+### Measured (live run, 2026-10-12)
+
+`check 21` on demo-app, fresh cache, two attempts across a Gemini free-tier quota reset: 71 real
+provider requests on 5 models, $0.0461 at list price (free tiers, $0 billed). Partial trace
+`56a5915f9768ef65b7f21546bdfceb6a` (stopped by the daily limit, 56 requests), final trace
+`0f65667e9f5c521dfc124c89f188f9ca` (15 requests, 56 from the cache). Verdict: switch. Today's
+`groq:openai/gpt-oss-120b` scores 10/12 (6/8 hard) at $418.04/month, over the $375 budget; the
+cheapest setup that meets the bar is `groq:openai/gpt-oss-20b` + verifier, 10/12 (6/8 hard) at
+$336.48/month, saving $81.56/month; best quality within the budget is
+`gemini:gemini-3.1-flash-lite`, 11/12 (8/8 hard) at $345.07/month. Results:
+`demo-app/.notbydefault/results/21-20261012T070725Z.json`.
 
 ## Tests
 

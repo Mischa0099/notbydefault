@@ -9,7 +9,9 @@ Generated with cfo.ai's Ari agent on 2026-10-12 using business/costs.csv.
 | Starter | $49/team/mo | Unlimited collaborators, 4 bounded fit-checks/mo |
 | Growth | $149/team/mo | 20 fit-checks/mo, ongoing decision monitoring |
 
-Priced per team because the value is reviewing decisions, not counting engineers. One persistent $62/mo saved decision covers Starter with $13 left over.
+Priced per team because the value is reviewing decisions, not counting engineers. One persistent $82/mo saved decision covers Starter with $33 left over.
+
+Updated 2026-10-12: live run on #21 produced $82/mo saved, not $62. The plan's conclusions are unchanged — more saving per decision strengthens the ROI.
 
 ## Unit economics
 

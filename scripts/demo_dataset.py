@@ -7,15 +7,19 @@ touched), made a git repo on main, and then:
   0. watch      record each decision's assumptions (baseline)
   1. reasons    a SCRIPTED agent reason on #13, #21, MongoDB, OpenAI and gpt-4o (stored as
                 agent_reason, its source saying so: demo-app's own sessions recorded none)
-  2. resolve 21 dry run, then --apply on branch nbd/21-... (commit answered "yes", on the copy)
+  2. resolve 21 dry run, then --apply on branch nbd/21-... (commit answered "yes", on the copy).
+                When the verdict recommends a "+ verifier" setup, resolve stops at its
+                recommendation (adding a verifier loop to the code is not automated yet) and both
+                runs record that; #21 then stays on its current model
   3. pivot      the user types PIVOT_PROMPT. The real Pivot Check runs first; when it records
                 nothing (its prefilter or confirm call says no, or --offline has no cached
                 answer), ONE pivot is written from SEEDED_PIVOT, marked source=seeded
      + an agent turn: the PreToolUse hook catches a new model choice, its reason read from a
                 scripted transcript (scripts/demo_transcript.jsonl)
   4. claims     on #21 first, then the other reasoned decisions and the agent turn's
-  5. require    REQUIREMENT: Groq documents US only -> #13 stale; #21 now runs on Gemini, which
-                documents no region -> needs review
+  5. require    REQUIREMENT: Groq documents US only -> every decision still on Groq goes stale
+                (#13, and #21 unless resolve moved it); a decision whose region depends on the
+                deployment (MongoDB) -> needs review
   6. watch      re-evaluate the assumptions ('data region: any' broken on #21)
   7. scan       decision debt
   8. shots      regenerate docs/screenshots (light + dark) from the dataset; --no-shots skips it
@@ -268,6 +272,29 @@ def resolve(p: Path, did: int, client, apply: bool) -> None:
         print(f"[trace] {client.step}: {r.tracer.trace_id}")
 
 
+def verifier_lift(p: Path, decision: dict | None) -> str:
+    """What the verifier adds, from the decision's own results file: the recommended setup when
+    it relies on the verifier, else the model the verifier lifts most. "" when nothing to cite."""
+    rel = (decision or {}).get("data", {}).get("results")
+    if not rel or not (p / rel).is_file():
+        return ""
+    res = json.loads((p / rel).read_text(encoding="utf-8"))
+    st = {(s["model"], s["setup"]): s for s in res["stats"].values() if s.get("n_ref")}
+
+    def correct(s):
+        return round(s["correct_rate"] * s["n_ref"])
+    lifts = {m: correct(st[(m, "verified")]) - correct(st[(m, "alone")])
+             for m, setup in st if setup == "alone" and (m, "verified") in st}
+    model, setup = res["verdict"]["recommended"]
+    if setup != "verified":
+        model = max(lifts, key=lifts.get, default=None)
+    if model not in lifts or lifts[model] <= 0:
+        return ""
+    a, v = st[(model, "alone")], st[(model, "verified")]
+    return (f"{model.split(':', 1)[-1]} from {correct(a)}/{a['n_ref']} to {correct(v)}/{v['n_ref']} "
+            f"correct (trace {(res.get('trace_id') or '-')[:8]})")
+
+
 def pivot(p: Path, client) -> None:
     """The real Pivot Check on PIVOT_PROMPT; one seeded pivot when it records nothing."""
     from notbydefault.fit.tracing import make_tracer
@@ -296,10 +323,10 @@ def pivot(p: Path, client) -> None:
     with Graph.for_project(p) as g:
         verifiers = next((n for n in g.nodes("evidence")
                           if n["label"] == "Verifiers for decision #21"), None)
+        lift = verifier_lift(p, g.get_node(21))
         conflicts = [{"id": verifiers["id"], "type": "evidence", "label": verifiers["label"],
-                      "why": "the fit check measured the verifier lifting "
-                             "gemini-3.1-flash-lite from 11/12 to 12/12 correct (trace 4bcff389)"}
-                     ] if verifiers else []
+                      "why": f"the fit check measured the verifier lifting {lift}"}
+                     ] if verifiers and lift else []
         imp = {"change": SEEDED_PIVOT["change"], "conflicts": conflicts,
                "decisions": [{"id": 21}]}
         pid = record(g, PIVOT_PROMPT, imp, "demo-pivot", {"model": None})

@@ -494,9 +494,9 @@ def test_cache_tolerates_concurrent_writes_of_the_same_key(tmp_path):
 
 def test_net_saving_line_from_the_unrounded_numbers():
     from notbydefault.fit.report import net_saving_line
-    # decision #21's demo fit check, as stored in its results file
-    assert net_saving_line(407.35499999999996, 345.075, 0.0375157) == (
-        "Net saving: $407.35/mo → $345.07/mo = $62.28/mo saved. Check cost once at "
-        "$0.0375 (list). First-month ROI: $62.24.")
+    # decision #21's live fit check (trace 0f65667e), as stored in its results file
+    assert net_saving_line(418.035, 336.47999999999996, 0.0220937) == (
+        "Net saving: $418.04/mo → $336.48/mo = $81.56/mo saved. Check cost once at "
+        "$0.0221 (list). First-month ROI: $81.53.")
     assert net_saving_line(300.0, 345.07, 0.04) == ""        # recommended costs more: no saving
     assert net_saving_line(None, 345.07, 0.04) == ""
