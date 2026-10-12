@@ -55,15 +55,20 @@ python scripts/demo_dataset.py --out .demo-dataset/demo-app --offline
 
 ## Results
 
-On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions, and pivot detection from 0.67 to 1.00. 460 tests, no network.
+On our own evals, decision detection improved from 0.81 to 1.00 recall over three versions, and pivot detection from 0.67 to 1.00. 472 tests, no network.
 
 ## Sponsor tools
 
 - **neatlogs:** every model call, verifier and hook traced as spans with tokens and cost.
-- **Entire:** Graph finds the code each decision affects; checkpoints link each decision to the agent session that made it.
+  - Model calls go to Groq and Google AI Studio over HTTPS. Your project data (notes, cases, code paths) is sent to those providers as prompts. No calls to Anthropic or OpenAI. When `NEATLOGS_API_KEY` is set, prompts and outputs are also sent to neatlogs. When it's not set, no spans leave the machine.
+- **Entire:** Entire's Graph finds the callers affected by each decision (so `resolve #21` edits `actions.py` but leaves `app.py` alone — decision #13's own evidence rejected Gemini for summaries). Checkpoints link decisions to the agent session that made them.
 - **cfo.ai:** pricing ($49/team/month hypothesis) and a 12-month runway plan in `business/plan.md`.
 
-Model calls go to Groq and Google AI Studio; with `NEATLOGS_API_KEY` set, prompts and outputs are also exported to neatlogs. When `NEATLOGS_API_KEY` is not set, no spans leave the machine.
+## Known limitations
+
+- Live demo may require a resume across days when provider free-tier quotas reset; the check saves state and resumes without duplicating requests.
+- Eval results are measured on our own cases with held-out cases written before fixes. Not independently labeled.
+- `test_hook_is_fast` is a timing flake (300 ms limit); passes when run alone.
 
 ## Submission
 
