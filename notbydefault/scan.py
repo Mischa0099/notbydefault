@@ -163,3 +163,68 @@ def scan(project: Path, record: bool = False, out=print) -> int:
     else:
         out("No decision debt.")
     return 0
+
+
+# --- retroactive audit: `scan --history` (read-only; nothing is written) --------------------
+
+HISTORY_PATHS = ("*.py", "*.yaml", "*.toml", "requirements*.txt")
+
+
+def _git(project: Path, *args: str) -> str:
+    import subprocess
+    return subprocess.run(["git", "-C", str(project), *args], capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", check=True).stdout
+
+
+def history_hits(diff: str) -> list[tuple[str, str]]:
+    """(path, added line) for each added line of a unified diff that the existing detector
+    (detect.detect_file_change / detect_shell) calls a decision; a literal or package already
+    on a removed line of the same file (a moved or edited line) is not new."""
+    from notbydefault.detect import detect_file_change, detect_shell
+    files: dict[str, tuple[list[str], list[str]]] = {}
+    path = None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("--- ") or path is None:
+            continue
+        elif line.startswith("+"):
+            files.setdefault(path, ([], []))[1].append(line[1:])
+        elif line.startswith("-"):
+            files.setdefault(path, ([], []))[0].append(line[1:])
+    hits = []
+    for path, (removed, added) in files.items():
+        old = "\n".join(removed)
+        for line in added:
+            if detect_file_change(path, old, line) or detect_shell(line.strip(), None):
+                hits.append((path, line.strip()))
+    return hits
+
+
+def scan_history(project: Path, limit: int = 100, out=print) -> int:
+    """Run the decision detector over the last `limit` commits' diffs and print one block."""
+    import subprocess
+    project = Path(project).resolve()
+    try:
+        log = _git(project, "log", f"-n{limit}", "--format=%H%x09%h%x09%ad", "--date=short")
+    except (OSError, subprocess.CalledProcessError) as e:
+        out(f"Repo history scan: not a git repository or git failed ({e}).")
+        return 1
+    commits = [line.split("\t") for line in log.splitlines() if line.count("\t") == 2]
+    examples, n_hits, n_commits = [], 0, 0
+    for sha, short, date in commits:
+        diff = _git(project, "show", "--format=", "--unified=0", "--no-color", "--no-ext-diff",
+                    "--diff-merges=first-parent", sha, "--", *HISTORY_PATHS)
+        hits = history_hits(diff)
+        if hits:
+            n_hits += len(hits)
+            n_commits += 1
+            examples += [(short, date, p, l) for p, l in hits[:3 - len(examples)]]
+    out(f"Repo history scan: scanned last {len(commits)} commits. Found {n_hits} "
+        f"decision-shaped line(s) across {n_commits} commit(s). Read-only: the graph is not "
+        "touched.")
+    if examples:
+        out("Examples (up to 3):")
+        for short, date, p, l in examples:
+            out(f"  - {short} {date} {p}: {l[:100]}")
+    return 0

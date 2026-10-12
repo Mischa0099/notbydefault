@@ -358,3 +358,15 @@ a.focus:hover, a.focus:focus-visible { background: color-mix(in srgb, var(--acce
 
 .override-guard { margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--warn); border-left-width: 5px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-weight: 600; }
 .override-guard a, .override-guard code { color: inherit; }
+
+.tile.live-proof { border-color: var(--ok); background: color-mix(in srgb, var(--ok-bg) 70%%, var(--sheet)); }
+.tile.live-proof::after { background: var(--ok); }
+.tile.live-proof .proof { font-weight: 600; line-height: 1.35; margin: 4px 0; }
+.pinned-numbers { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: baseline; margin: 0 0 18px; padding: 14px 18px; border: 1px solid var(--rule-2); border-radius: 10px; background: var(--sheet); }
+.pinned-numbers div { display: flex; flex-direction: column; }
+.pinned-numbers b { font: 700 1.9rem/1.1 var(--mono); }
+.pinned-numbers span { font-size: .8rem; color: var(--muted); }
+.pinned-numbers .rec b { color: var(--ok); } .pinned-numbers .save b { color: var(--warn); }
+.pinned-numbers p { flex-basis: 100%%; margin: 0; }
+.hack-badge { font: 600 .68rem/1 var(--mono); letter-spacing: .04em; padding: 4px 7px; border: 1px solid var(--rule-2); border-radius: 999px; color: var(--muted); text-decoration: none; }
+.hack-badge:hover { color: var(--ink); border-color: var(--ink); }

@@ -14,6 +14,19 @@
   </div>
   <a class="btn" href="/graph?focus={{ d.id }}">Show neighbourhood in graph</a>
 </div>
+{% if v.fit and v.fit.table and v.fit.table.headers %}{% set t = v.fit.table %}
+{% set ci = t.headers.index("correct (95% CI)") if "correct (95% CI)" in t.headers else -1 %}{% set mi = t.headers.index("monthly") if "monthly" in t.headers else -1 %}
+{% set cur = (t.rows|selectattr("current")|list)[:1] %}{% set rec = (t.rows|selectattr("recommended")|rejectattr("current")|list)[:1] %}
+{% if ci >= 0 and mi >= 0 and cur and rec and cur[0].cells[mi].startswith("$") and rec[0].cells[mi].startswith("$") %}
+{% set cm = cur[0].cells[mi][1:]|replace(",", "")|float %}{% set rm = rec[0].cells[mi][1:]|replace(",", "")|float %}
+<section class="pinned-numbers" id="pinned-numbers" aria-label="Key numbers from the fit check">
+  <div><b>{{ cur[0].cells[ci].split(" ")[0] }}</b><span>correct today</span></div>
+  <div><b>${{ "%.0f"|format(cm) }}/mo</b><span>today</span></div>
+  <div class="rec"><b>${{ "%.0f"|format(rm) }}/mo</b><span>recommended ({{ rec[0].cells[ci].split(" ")[0] }})</span></div>
+  {% if cm > rm %}<div class="save"><b>${{ "%.0f"|format(cm - rm) }}</b><span>projected saving/mo</span></div>{% endif %}
+  <p class="small muted">From this decision's fit check, at the assumed volume (<mark class="assume">ASSUMPTION</mark>); list prices.</p>
+</section>
+{% endif %}{% endif %}
 
 <div class="grid-2">
   <article class="receipt" aria-labelledby="h-receipt">

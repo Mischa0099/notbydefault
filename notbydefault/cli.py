@@ -251,6 +251,9 @@ def cmd_watch(args) -> int:
 
 
 def cmd_scan(args) -> int:
+    if args.history:
+        from notbydefault.scan import scan_history
+        return scan_history(Path(args.project))
     from notbydefault.scan import scan
     return scan(Path(args.project), record=args.record)
 
@@ -500,6 +503,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", default=".", help="project dir (default: current dir)")
     p.add_argument("--record", action="store_true",
                    help="add choices found in the code but not in the graph as unreviewed decisions")
+    p.add_argument("--history", action="store_true",
+                   help="read-only audit: run the decision detector over the last 100 commits' diffs")
     p.set_defaults(func=cmd_scan)
 
     p = sub.add_parser("ui", help="local web UI for the Decision Graph (127.0.0.1 only)")

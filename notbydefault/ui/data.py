@@ -636,8 +636,14 @@ def overview(project: Path, snap: Snapshot) -> dict:
               + (anchor if anchor in present or anchor in ("fit-steps", "affected", "fit-evidence",
                                                            "failure-bank") else "agent-journal")}
              for a, covers, spans, anchor in FOCUS_MAP]
+    # the latest results file that recorded a finished live run (scripts/live_demo_run.py)
+    live = max((c for c in checks if (c.data.get("live_run") or {}).get("traces")),
+               key=lambda c: c.run_at, default=None)
+    live_run = None if live is None else dict(
+        live.data["live_run"], decision_id=live.decision_id,
+        trace_id=live.data.get("trace_id"), trace_url=trace_url(live.data.get("trace_id")))
     return {"decisions": len(decisions), "count": count, "checks": len(checks), "debt": debt,
-            "focus": focus, "focus_decision": focus_did,
+            "focus": focus, "focus_decision": focus_did, "live_run": live_run,
             "by_default": sum(by_default(d) for d in decisions), "savings": savings,
             "goal": next((g["label"] for g in snap.of_type("goal")), None)}
 

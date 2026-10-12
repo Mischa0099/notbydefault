@@ -79,6 +79,7 @@ python -m notbydefault ui --project path/to/app        # http://127.0.0.1:8765
 | `watch` | Reopen decisions whose assumptions changed |
 | `why "<question>"` | Answer from recorded decisions only, with sources |
 | `scan` | Decision debt: unchecked choices, false claims, expired assumptions |
+| `scan --history` | Scans the last 100 commits and reports decision-shaped changes without touching the graph. Read-only audit. |
 | `ui` | Local web UI: decision graph, receipts, timeline, evals, costs |
 
 The demo project's state (`demo-app/.notbydefault/`: graph, results, response caches) is gitignored. A fresh clone therefore can't replay the #21 run offline. The published evidence is the decision record and the screenshots. On the author's machine, `scripts/recording_setup.py` builds a disposable copy that replays the live run from cache with no requests (see [`docs/recording_plan.md`](docs/recording_plan.md)).
