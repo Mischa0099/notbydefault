@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.11.4",
+  "checkpoint_id": "01M4PSSS6X0C457DB90B7BR4K6",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "README.md",
+    "docs/screenshots/decision-dark.png",
+    "docs/screenshots/decision-light.png",
+    "notbydefault/fit/report.py",
+    "notbydefault/fit/tracing.py",
+    "notbydefault/llm.py",
+    "notbydefault/resolve.py",
+    "notbydefault/ui/data.py",
+    "notbydefault/ui/templates/_decision_body.html",
+    "scripts/demo_dataset.py",
+    "scripts/live_demo_run.py",
+    "tests/test_fit_tracing.py",
+    "tests/test_fit_units.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 280,
+    "cache_creation_tokens": 415581,
+    "cache_read_tokens": 26009130,
+    "output_tokens": 104213,
+    "api_call_count": 140
+  }
+}
