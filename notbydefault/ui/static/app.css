@@ -355,3 +355,6 @@ a.focus:hover, a.focus:focus-visible { background: color-mix(in srgb, var(--acce
 .journal li { break-inside: avoid; padding: 4px 0; border-bottom: 1px solid var(--rule-2); overflow-wrap: anywhere; }
 .journal .why { color: var(--muted); }
 [id] { scroll-margin-top: 16px; }
+
+.override-guard { margin: 0 0 16px; padding: 10px 14px; border: 1px solid var(--warn); border-left-width: 5px; border-radius: 8px; background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+.override-guard a, .override-guard code { color: inherit; }

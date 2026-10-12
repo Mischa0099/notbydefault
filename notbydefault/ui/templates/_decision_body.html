@@ -1,3 +1,6 @@
+{% set og = data.override_guard %}{% if og and og.overrides_decision_id %}
+<div class="override-guard" role="alert" id="override-guard">&#9888; Overrides <a href="/decisions/{{ og.overrides_decision_id }}">decision #{{ og.overrides_decision_id }}</a> which has evidence{% if og.old_evidence_trace %} (trace <code>{{ og.old_evidence_trace[:8] }}</code>){% endif %}. New evidence required to confirm this choice.{% if og.source == "seeded" %} <span class="muted small">(seeded demo record, not a detection)</span>{% endif %}</div>
+{% endif %}
 {% include "_claims.html" %}
 {% from "_macros.html" import pill, trace, file %}
 <div class="section-title" id="affected"><h2>Call site &amp; affected code</h2><span class="src">Entire Graph · {{ v.affected_source or "touched files" }}{% if data.affected_at %} · {{ data.affected_at|when }}{% endif %}</span></div>

@@ -90,6 +90,11 @@ SEEDED_PIVOT = {
     "source_note": "seeded demo record (scripts/demo_dataset.py): the real Pivot Check did not "
                    "record this prompt",
 }
+SEEDED_OVERRIDE = {
+    "chosen": "llama-3.3-70b-versatile",
+    "source_note": "seeded demo record (scripts/demo_dataset.py): shows the Override Guard; "
+                   "not a detection",
+}
 traces: list[tuple[str, str]] = []
 written: list[str] = []
 
@@ -363,6 +368,27 @@ def agent_turn(p: Path) -> int | None:
     return hit[-1]["id"] if hit else None
 
 
+def seed_override(p: Path, did: int) -> int | None:
+    """A SEEDED decision of #did's type with a different model, so the Override Guard banner
+    shows on its receipt. Recorded as source=seeded; not a detection."""
+    from notbydefault.graph import Graph
+    from notbydefault.override_guard import check
+    with Graph.for_project(p) as g:
+        old = g.get_node(did)
+        if not old or old["type"] != "decision":
+            print(f"  #{did}: skipped (not a decision in this graph)")
+            return None
+        keep = ("kind", "category", "file", "files")
+        data = {k: old["data"][k] for k in keep if k in old["data"]}
+        data.update(SEEDED_OVERRIDE, status="unreviewed", source="seeded")
+        guard = check(g, data, SEEDED_OVERRIDE["chosen"], p)
+        if guard:
+            data["override_guard"] = dict(guard, source="seeded")
+        nid = g.add_node("decision", SEEDED_OVERRIDE["chosen"], data, "demo-override")
+    print(f"  seeded #{nid} {SEEDED_OVERRIDE['chosen']}: override_guard={data.get('override_guard')}")
+    return nid
+
+
 def screenshots(p: Path, decision: int, claims_decision: int | None) -> int:
     cmd = [sys.executable, str(REPO / "scripts" / "ui_screenshots.py"), "--project", str(p),
            "--decision", str(decision)]
@@ -418,6 +444,8 @@ def main() -> int:
         captured("watch", watch, p)
     with Step(p, "7. scan"):
         captured("scan", scan, p)
+    with Step(p, f"7b. seeded override of #{args.decision} (Override Guard banner)"):
+        seed_override(p, args.decision)
     shots = 0
     if not args.no_shots:
         with Step(p, "8. screenshots -> docs/screenshots (light + dark)"):

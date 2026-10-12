@@ -80,6 +80,13 @@ def record(graph, detection, event: dict, project_dir: Path) -> int:
         reason, source = reason_from_event(event)    # the agent's own words, for `claims`
         if reason:
             data.update(agent_reason=reason, agent_reason_source=source)
+        try:                                         # warning only: never break recording
+            from notbydefault.override_guard import check as override_check
+            guard = override_check(graph, data, detection.chosen, project_dir)
+            if guard:
+                data["override_guard"] = guard
+        except Exception:
+            pass
         decision_id = graph.add_node("decision", detection.chosen, data, session_id)
         for node in graph.nodes("goal"):
             graph.add_edge(decision_id, node["id"], "serves")
